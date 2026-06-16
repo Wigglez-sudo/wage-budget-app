@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Wage Budget Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-4">
+        <h1 class="text-center mb-4">💰 Wage Budget Tracker</h1>
+
+        <!-- Summary Cards -->
+        <div class="row text-center mb-4">
+            <div class="col-md-4">
+                <div class="card text-white bg-success mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Income</h5>
+                        <p class="card-text display-6">£{{ "%.2f"|format(total_income) }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-white bg-danger mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Expenses</h5>
+                        <p class="card-text display-6">£{{ "%.2f"|format(total_expenses) }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-white bg-primary mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Balance</h5>
+                        <p class="card-text display-6">£{{ "%.2f"|format(balance) }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Wage Form -->
+        <div class="card mb-4">
+            <div class="card-header">➕ Add Wage Payment</div>
+            <div class="card-body">
+                <form action="/add_wage" method="post" class="row g-3">
+                    <div class="col-md-4">
+                        <input type="date" name="date" class="form-control" placeholder="Date">
+                    </div>
+                    <div class="col-md-3">
+                        <input type="number" step="0.01" name="amount" class="form-control" placeholder="Amount (£)" required>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" name="source" class="form-control" placeholder="Source (e.g. employer)">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-success w-100">Add</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Add Expense Form -->
+        <div class="card mb-4">
+            <div class="card-header">➖ Add Expense</div>
+            <div class="card-body">
+                <form action="/add_expense" method="post" class="row g-3">
+                    <div class="col-md-3">
+                        <input type="date" name="date" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <input type="number" step="0.01" name="amount" class="form-control" placeholder="Amount (£)" required>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" name="category" class="form-control" placeholder="Category (e.g. rent)">
+                    </div>
+                    <div class="col-md-2">
+                        <input type="text" name="description" class="form-control" placeholder="Description">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-danger w-100">Add</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Wage History -->
+        <h3>📋 Wage History</h3>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Amount (£)</th>
+                    <th>Source</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for wage in wages %}
+                <tr>
+                    <td>{{ wage.date }}</td>
+                    <td>£{{ "%.2f"|format(wage.amount) }}</td>
+                    <td>{{ wage.source }}</td>
+                    <td><a href="{{ url_for('delete_wage', id=wage.id) }}" class="btn btn-sm btn-outline-danger">Delete</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Expense History -->
+        <h3>🧾 Expense History</h3>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Amount (£)</th>
+                    <th>Category</th>
+                    <th>Description</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for exp in expenses %}
+                <tr>
+                    <td>{{ exp.date }}</td>
+                    <td>£{{ "%.2f"|format(exp.amount) }}</td>
+                    <td>{{ exp.category }}</td>
+                    <td>{{ exp.description }}</td>
+                    <td><a href="{{ url_for('delete_expense', id=exp.id) }}" class="btn btn-sm btn-outline-danger">Delete</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
