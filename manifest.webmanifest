@@ -1,7 +1,7 @@
 {
-  "name": "Budget Tracker Pro",
-  "short_name": "Budget Pro",
-  "description": "Encrypted mobile budget tracker for wages, expenses, recurring reminders and yearly reports.",
+  "name": "BudgetVault",
+  "short_name": "BudgetVault",
+  "description": "BudgetVault is a private, offline-first budget planner with encrypted local storage, flexible cycles, smart categories, and secure backups.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -41,7 +41,7 @@
   ],
   "shortcuts": [
     {
-      "name": "Open Budget Tracker",
+      "name": "Open BudgetVault",
       "short_name": "Open",
       "url": "./index.html",
       "icons": [

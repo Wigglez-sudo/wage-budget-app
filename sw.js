@@ -1,7 +1,9 @@
-const CACHE_VERSION = 'budget-tracker-pro-v2-ui-overhaul';
+const CACHE_VERSION = 'budget-tracker-pro-v7-polish';
 const APP_SHELL = [
   './',
   './index.html',
+  './styles.css',
+  './app.js',
   './manifest.webmanifest',
   './offline.html',
   './icons/icon-192.png',
@@ -10,7 +12,6 @@ const APP_SHELL = [
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png'
 ];
-const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -33,6 +34,7 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -47,18 +49,22 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (url.href === CHART_JS_URL || url.origin === self.location.origin) {
-    event.respondWith(
-      caches.match(request).then(cached => {
-        if (cached) return cached;
-        return fetch(request).then(response => {
-          if (response && response.status < 400) {
-            const copy = response.clone();
-            caches.open(CACHE_VERSION).then(cache => cache.put(request, copy));
-          }
-          return response;
-        });
-      })
-    );
-  }
+  const pathname = url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
+  const isAppAsset = APP_SHELL.some(asset => pathname.endsWith(asset.replace('./', '/')));
+  if (!isAppAsset) return;
+
+  event.respondWith(
+    caches.match(request).then(cached => {
+      if (cached) return cached;
+      return fetch(request).then(response => {
+        if (response && response.status < 400) {
+          const copy = response.clone();
+          caches.open(CACHE_VERSION).then(cache => cache.put(request, copy));
+        }
+        return response;
+      }).catch(() => caches.match('./offline.html'));
+    })
+  );
 });
+
+self.addEventListener('message', event => { if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting(); });

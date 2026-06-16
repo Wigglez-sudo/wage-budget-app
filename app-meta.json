@@ -1,0 +1,17 @@
+{
+  "version": "1.3.1",
+  "publishedAt": "2026-06-17",
+  "channel": "stable",
+  "notes": [
+    "BudgetVault launch build with privacy-first branding and polished public-facing copy.",
+    "New slogan set and clearer trust messaging across the splash screen, guide, security hub, and install flow.",
+    "GitHub-ready package updated so you can upload straight to a repo and publish with GitHub Pages.",
+    "Version metadata and release notes stay wired for in-app update prompts and What's new screens.",
+    "Service worker update flow and deployment files kept ready for end-user releases."
+  ],
+  "githubPagesHint": "If you host BudgetVault on GitHub Pages, updating this file in the deployed site is enough for the app to show release notes and prompt for refresh when a new build is available.",
+  "releasedAt": "2026-06-17T00:00:00Z",
+  "changelog": [
+    "Applied the approved BudgetVault logo across the app, install icons, and launch surfaces."
+  ]
+}
