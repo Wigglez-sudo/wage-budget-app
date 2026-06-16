@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="color-scheme" content="dark light">
+    <meta name="application-name" content="Budget Tracker Pro">
+    <meta name="apple-mobile-web-app-title" content="Budget Pro">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="Encrypted mobile budget tracker for wages, expenses, recurring reminders and yearly reports.">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <title>Budget Tracker Pro</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --text: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --primary: #38bdf8;
+            --green: #4ade80;
+            --red: #f87171;
+            --border: #334155;
+            --radius: 10px;
+            --shadow: 0 2px 8px rgba(0,0,0,0.4);
+            --input-bg: #0f172a;
+        }
+        body.light {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --text-secondary: #475569;
+            --primary: #0284c7;
+            --green: #16a34a;
+            --red: #dc2626;
+            --border: #cbd5e1;
+            --shadow: 0 2px 8px rgba(0,0,0,0.1);
+            --input-bg: #ffffff;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 1rem;
+            min-height: 100vh;
+            transition: background 0.3s, color 0.3s;
+        }
+        .container { max-width: 1300px; margin: 0 auto; }
+
+        /* Top bar */
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .top-bar h1 { color: var(--primary); font-size: 1.8rem; }
+        .theme-toggle {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            color: var(--text);
+            box-shadow: var(--shadow);
+        }
+        .lock-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            color: var(--text);
+            box-shadow: var(--shadow);
+        }
+
+        /* Budget selector */
+        .budget-selector {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--surface);
+            padding: 0.5rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            flex-wrap: wrap;
+        }
+        .budget-selector select {
+            background: var(--input-bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem;
+        }
+        .budget-actions button { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 0.5rem 1rem;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+        }
+
+        /* Dashboard */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 1.2rem;
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+        .card .label { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .card .value { font-size: 1.8rem; font-weight: bold; margin: 0.5rem 0; }
+        .progress-container { margin-top: 0.8rem; }
+        .progress-bar { background: var(--border); border-radius: 20px; height: 10px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--green); transition: width 0.4s; }
+        .progress-fill.over { background: var(--red); }
+
+        /* Forms */
+        form, .form-inline {
+            background: var(--surface);
+            padding: 1rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.7rem;
+            align-items: flex-end;
+            margin-bottom: 1.5rem;
+        }
+        input, select, button {
+            padding: 0.5rem 0.8rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--input-bg);
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+        button {
+            background: var(--primary);
+            border: none;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        button.danger { background: var(--red); }
+        button.secondary { background: var(--border); color: var(--text); }
+
+        /* Tables */
+        .table-wrapper { overflow-x: auto; margin-bottom: 1rem; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--surface);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+        th {
+            background: var(--border);
+            color: var(--text-secondary);
+            padding: 0.7rem;
+            cursor: pointer;
+            user-select: none;
+        }
+        th:hover { background: #475569; }
+        td { padding: 0.7rem; border-bottom: 1px solid var(--border); }
+        .sort-icon { font-size: 0.7rem; margin-left: 4px; }
+
+        /* Reminders */
+        .reminders {
+            background: var(--surface);
+            padding: 1rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+        }
+        .reminder-item { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0; }
+
+        /* Charts */
+        .chart-container { max-width: 400px; margin: 1rem auto; }
+        .yearly-container { max-width: 700px; margin: 1rem auto; }
+
+        /* Modals / Overlays */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal {
+            background: var(--surface); padding: 2rem; border-radius: var(--radius);
+            box-shadow: var(--shadow); max-width: 400px; width: 90%;
+        }
+        .modal h2 { margin-bottom: 1rem; color: var(--primary); }
+        .modal input { width: 100%; margin-bottom: 1rem; }
+        .modal button { width: 100%; }
+        .hidden { display: none; }
+
+        /* PIN pad */
+        .pin-pad {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 1rem;
+        }
+        .pin-pad button {
+            padding: 1rem; font-size: 1.2rem; border-radius: 10px; background: var(--border); color: var(--text);
+        }
+        .pin-dots { font-size: 1.5rem; letter-spacing: 0.5rem; margin: 1rem 0; }
+
+
+        .install-banner {
+            background: linear-gradient(135deg, rgba(56,189,248,0.18), rgba(74,222,128,0.12));
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 0.8rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .install-banner p { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.2rem; }
+        .app-status { font-size: 0.8rem; color: var(--text-secondary); min-height: 1rem; }
+        .offline-badge {
+            display: none;
+            background: var(--red);
+            color: white;
+            border-radius: 20px;
+            padding: 0.35rem 0.7rem;
+            font-weight: 700;
+            font-size: 0.8rem;
+        }
+        body.offline .offline-badge { display: inline-block; }
+        input, select, button { min-height: 44px; }
+        button { touch-action: manipulation; }
+        @supports (padding: max(0px)) {
+            body { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+        }
+
+        @media (max-width: 600px) {
+            body { padding: 0.8rem; }
+            .top-bar { flex-direction: column; align-items: flex-start; }
+            .top-bar h1 { font-size: 1.45rem; }
+            form, .form-inline, .controls, .budget-selector { align-items: stretch; }
+            form input, form select, form button, .form-inline input, .form-inline select, .form-inline button, .controls input, .controls button, .budget-selector select, .budget-selector button { width: 100%; }
+            .dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+            .card { padding: 0.9rem; }
+            .card .value { font-size: 1.35rem; }
+        }
+    </style>
+</head>
+<body class="dark">
+    <!-- Encryption overlay -->
+    <div id="encryptOverlay" class="modal-overlay hidden">
+        <div class="modal">
+            <h2 id="encryptTitle">🔐 Secure Your Data</h2>
+            <p id="encryptMsg"></p>
+            <input type="password" id="encryptPassword" placeholder="Enter password">
+            <input type="password" id="encryptPasswordConfirm" placeholder="Confirm password" class="hidden">
+            <button id="encryptSubmit"></button>
+            <p style="font-size:0.8rem; color: var(--text-secondary); margin-top:0.5rem;">
+                ⚠️ Lost password = lost data forever.<br>
+                <span title="AES-256-GCM, PBKDF2 600,000 iterations">🔒 Encryption details</span>
+            </p>
+        </div>
+    </div>
+
+    <!-- PIN Lock overlay -->
+    <div id="pinOverlay" class="modal-overlay hidden">
+        <div class="modal">
+            <h2>🔐 Enter PIN</h2>
+            <div class="pin-dots" id="pinDots"></div>
+            <div class="pin-pad" id="pinPad"></div>
+            <button id="pinClear" class="secondary">Clear</button>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="appContent" class="hidden">
+        <div class="top-bar">
+            <h1>💰 Budget Tracker Pro</h1>
+            <div style="display:flex; gap:0.5rem;">
+                <button id="setPinBtn" class="lock-btn">📌 Set PIN</button>
+                <button id="lockNowBtn" class="lock-btn" style="display:none;">🔒 Lock</button>
+                <button id="themeToggle" class="theme-toggle">🌓 Theme</button>
+            </div>
+        </div>
+
+        <div id="installBanner" class="install-banner hidden">
+            <div>
+                <strong>📱 Install this app</strong>
+                <p id="installHelp">Install it to your home screen for a full-screen mobile app experience.</p>
+            </div>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                <button id="installAppBtn">Install</button>
+                <button id="dismissInstallBtn" class="secondary">Not now</button>
+            </div>
+        </div>
+        <div class="app-status" id="saveStatus" aria-live="polite"></div>
+        <span class="offline-badge">Offline mode</span>
+
+        <!-- Budget Management -->
+        <div class="budget-selector">
+            <label>Active Budget:</label>
+            <select id="budgetSelect"></select>
+            <div class="budget-actions">
+                <button id="newBudgetBtn">+ New Budget</button>
+                <button id="deleteBudgetBtn" class="danger" style="display:none;">🗑 Delete</button>
+            </div>
+            <button id="changePasswordBtn" class="secondary">🔑 Change Password</button>
+        </div>
+
+        <!-- Dashboard -->
+        <div class="dashboard" id="dashboard"></div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <input type="text" id="searchBox" class="search-input" placeholder="🔍 Search transactions...">
+            <input type="month" id="filterMonth">
+            <button id="applyFilter">Filter Month</button>
+            <button id="resetFilter">Show All</button>
+            <button id="yearlyReportBtn">📊 Yearly Report</button>
+        </div>
+
+        <!-- Yearly Report Section -->
+        <div id="yearlyReport" class="hidden" style="background:var(--surface); padding:1rem; border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:1.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3>📅 Yearly Report</h3>
+                <select id="yearSelect"></select>
+                <button id="closeYearlyBtn">✖</button>
+            </div>
+            <div class="yearly-container"><canvas id="yearlyChart"></canvas></div>
+            <div id="yearlySummary" class="dashboard" style="margin-top:1rem;"></div>
+        </div>
+
+        <!-- Reminders -->
+        <div class="reminders" id="reminderPanel">
+            <h3>⏰ Upcoming Recurring (next 7 days)</h3>
+            <div id="reminderList">No reminders.</div>
+        </div>
+
+        <!-- Forms -->
+        <form id="wageForm">
+            <input type="date" id="wageDate" required>
+            <input type="number" id="wageAmount" placeholder="Amount (£)" step="0.01" min="0.01" required>
+            <input type="text" id="wageSource" placeholder="Source">
+            <label><input type="checkbox" id="wageRecurring"> 🔁 Monthly</label>
+            <button type="submit">➕ Add Wage</button>
+        </form>
+
+        <form id="expenseForm">
+            <input type="date" id="expenseDate" required>
+            <input type="number" id="expenseAmount" placeholder="Amount (£)" step="0.01" min="0.01" required>
+            <input type="text" id="expenseCategory" placeholder="Category">
+            <input type="text" id="expenseDesc" placeholder="Description">
+            <label><input type="checkbox" id="expenseRecurring"> 🔁 Monthly</label>
+            <button type="submit">➖ Add Expense</button>
+        </form>
+
+        <!-- Budget Goal -->
+        <div class="form-inline">
+            <label>Budget Goal (£):</label>
+            <input type="number" id="budgetGoalInput" placeholder="Goal" step="0.01" min="0">
+            <button id="setBudgetGoal">Set Goal</button>
+        </div>
+
+        <!-- Tables -->
+        <h3>📋 Wages</h3>
+        <div class="table-wrapper">
+            <table id="wageTable">
+                <thead><tr>
+                    <th data-sort="date">Date <span class="sort-icon"></span></th>
+                    <th data-sort="amount">Amount <span class="sort-icon"></span></th>
+                    <th>Source</th><th>Recurring</th><th></th>
+                </tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <h3>🧾 Expenses</h3>
+        <div class="chart-container"><canvas id="expenseChart"></canvas></div>
+        <div class="table-wrapper">
+            <table id="expenseTable">
+                <thead><tr>
+                    <th data-sort="date">Date <span class="sort-icon"></span></th>
+                    <th data-sort="amount">Amount <span class="sort-icon"></span></th>
+                    <th>Category</th><th>Description</th><th>Recurring</th><th></th>
+                </tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Export / Import -->
+        <div class="form-inline" style="justify-content: space-between;">
+            <div>
+                <button id="exportJSON">💾 Export JSON</button>
+                <button id="importJSON">📂 Import JSON</button>
+                <input type="file" id="importFile" accept=".json" hidden>
+            </div>
+            <div>
+                <button id="exportCSV">📊 Export CSV</button>
+                <button id="clearDataBtn" class="danger">🗑 Clear All</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ---------- Global state ----------
+        let appData = { budgets: [], activeBudgetId: null };
+        let currentPassword = null;
+        let sessionPIN = null;        // set for current session only
+        let pinAttempts = 0;
+        let idleTimer = null;
+        let sortState = { field: 'date', order: 'asc' };
+        let currentFilterMonth = null;
+        let searchTerm = '';
+        let expenseChart, yearlyChart;
+        let saveQueue = Promise.resolve();
+        let deferredInstallPrompt = null;
+
+        function cloneData(data) {
+            if (typeof structuredClone === 'function') return structuredClone(data);
+            return JSON.parse(JSON.stringify(data));
+        }
+
+        function escapeHTML(value) {
+            return String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[ch]));
+        }
+
+        function formatDateLocal(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function setSaveStatus(text) {
+            const status = document.getElementById('saveStatus');
+            if (status) status.textContent = text || '';
+        }
+
+        // ---------- Enhanced Encryption (600k PBKDF2 iterations) ----------
+        async function deriveKey(password, salt) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },   // 600k iterations
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptData(data, password) {
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const key = await deriveKey(password, salt);
+            const encoded = new TextEncoder().encode(JSON.stringify(data));
+            const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+            return { salt: Array.from(salt), iv: Array.from(iv), data: Array.from(new Uint8Array(encrypted)) };
+        }
+
+        async function decryptData(encryptedObj, password) {
+            const salt = new Uint8Array(encryptedObj.salt);
+            const iv = new Uint8Array(encryptedObj.iv);
+            const data = new Uint8Array(encryptedObj.data);
+            const key = await deriveKey(password, salt);
+            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+            return JSON.parse(new TextDecoder().decode(decrypted));
+        }
+
+        async function storeEncrypted(data, password) {
+            const enc = await encryptData(data, password);
+            localStorage.setItem('budgetAppEncrypted', JSON.stringify(enc));
+        }
+
+        async function loadDecrypted(password) {
+            const raw = localStorage.getItem('budgetAppEncrypted');
+            if (!raw) return null;
+            try { return await decryptData(JSON.parse(raw), password); }
+            catch { return null; }
+        }
+
+        // ---------- PIN Lock logic (session-only, never stored) ----------
+        function showPINOverlay() {
+            if (!sessionPIN) return;
+            document.getElementById('pinOverlay').classList.remove('hidden');
+            document.getElementById('pinDots').textContent = '';
+            pinAttempts = 0;
+            buildPinPad();
+            clearIdleTimer();
+        }
+
+        function hidePINOverlay() {
+            document.getElementById('pinOverlay').classList.add('hidden');
+            document.getElementById('pinDots').textContent = '';
+            resetIdleTimer();
+        }
+
+        function buildPinPad() {
+            const pad = document.getElementById('pinPad');
+            pad.innerHTML = '';
+            for (let i = 1; i <= 9; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                btn.addEventListener('click', () => pinDigit(i));
+                pad.appendChild(btn);
+            }
+            const zero = document.createElement('button'); zero.textContent = '0';
+            zero.addEventListener('click', () => pinDigit(0));
+            pad.appendChild(zero);
+        }
+
+        let currentPinInput = '';
+        function pinDigit(digit) {
+            currentPinInput += digit;
+            document.getElementById('pinDots').textContent = '●'.repeat(currentPinInput.length);
+            if (currentPinInput === sessionPIN) {
+                hidePINOverlay();
+                currentPinInput = '';
+            } else if (currentPinInput.length >= sessionPIN.length) {
+                pinAttempts++;
+                if (pinAttempts >= 5) {
+                    alert('Too many wrong PIN attempts. Logged out. Re-enter password.');
+                    lockApp(); // will require full password again
+                }
+                currentPinInput = '';
+                document.getElementById('pinDots').textContent = '';
+            }
+        }
+
+        document.getElementById('pinClear').addEventListener('click', () => {
+            currentPinInput = '';
+            document.getElementById('pinDots').textContent = '';
+        });
+
+        function setSessionPIN(pin) {
+            sessionPIN = pin;
+            document.getElementById('setPinBtn').style.display = 'none';
+            document.getElementById('lockNowBtn').style.display = 'inline-block';
+            alert('PIN set for this session. It will be forgotten when you close the page.');
+            resetIdleTimer();
+        }
+
+        function clearSessionPIN() {
+            sessionPIN = null;
+            document.getElementById('setPinBtn').style.display = 'inline-block';
+            document.getElementById('lockNowBtn').style.display = 'none';
+            hidePINOverlay();
+        }
+
+        // Idle timer (auto-lock after 5 minutes)
+        function resetIdleTimer() {
+            clearTimeout(idleTimer);
+            if (sessionPIN) {
+                idleTimer = setTimeout(() => {
+                    showPINOverlay();
+                }, 5 * 60 * 1000); // 5 min
+            }
+        }
+
+        function clearIdleTimer() {
+            clearTimeout(idleTimer);
+        }
+
+        // Lock app completely (forgets PIN, requires password)
+        function lockApp() {
+            clearSessionPIN();
+            currentPassword = null;   // force re-authentication
+            document.getElementById('appContent').classList.add('hidden');
+            showEncryptionPrompt();
+        }
+
+        // ---------- Theme ----------
+        function applyTheme() {
+            document.body.className = localStorage.getItem('theme') || 'dark';
+        }
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            const newTheme = document.body.classList.contains('light') ? 'dark' : 'light';
+            document.body.className = newTheme;
+            localStorage.setItem('theme', newTheme);
+        });
+
+        // ---------- Budget management ----------
+        function getActiveBudget() {
+            return appData.budgets.find(b => b.id === appData.activeBudgetId);
+        }
+        function saveAndEncrypt() {
+            if (!currentPassword) return saveQueue;
+            const snapshot = cloneData(appData);
+            setSaveStatus('Saving encrypted data…');
+            saveQueue = saveQueue
+                .catch(() => {})
+                .then(() => storeEncrypted(snapshot, currentPassword))
+                .then(() => setSaveStatus('Saved.'))
+                .catch(err => {
+                    console.error('Save failed', err);
+                    setSaveStatus('Save failed. Export a backup now.');
+                    alert('Encrypted save failed. Please export a JSON backup now.');
+                });
+            return saveQueue;
+        }
+        function renderBudgetSelector() {
+            const select = document.getElementById('budgetSelect');
+            select.innerHTML = '';
+            appData.budgets.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b.id; opt.textContent = b.name;
+                select.appendChild(opt);
+            });
+            select.value = appData.activeBudgetId;
+            document.getElementById('deleteBudgetBtn').style.display = appData.budgets.length > 1 ? 'inline-block' : 'none';
+        }
+        document.getElementById('budgetSelect').addEventListener('change', function() {
+            appData.activeBudgetId = this.value; saveAndEncrypt(); renderAll();
+        });
+        document.getElementById('newBudgetBtn').addEventListener('click', () => {
+            const name = prompt('Budget name:'); if (!name) return;
+            const id = Date.now().toString();
+            appData.budgets.push({ id, name, wages:[], expenses:[], budgetGoal:0 });
+            appData.activeBudgetId = id; saveAndEncrypt(); renderAll();
+        });
+        document.getElementById('deleteBudgetBtn').addEventListener('click', () => {
+            if (appData.budgets.length <= 1) return;
+            if (!confirm('Delete current budget?')) return;
+            appData.budgets = appData.budgets.filter(b => b.id !== appData.activeBudgetId);
+            appData.activeBudgetId = appData.budgets[0].id;
+            saveAndEncrypt(); renderAll();
+        });
+
+        // ---------- Reminders & notifications ----------
+        function requestNotificationPermission() {
+            if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+        }
+        function getNextMonthlyOccurrence(originalDate, now) {
+            const source = new Date(originalDate + 'T12:00:00');
+            if (Number.isNaN(source.getTime())) return null;
+            const targetDay = source.getDate();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+            const makeCandidate = (year, month) => {
+                const lastDay = new Date(year, month + 1, 0).getDate();
+                return new Date(year, month, Math.min(targetDay, lastDay));
+            };
+
+            let candidate = makeCandidate(today.getFullYear(), today.getMonth());
+            if (candidate < today) candidate = makeCandidate(today.getFullYear(), today.getMonth() + 1);
+            return candidate;
+        }
+
+        function showReminders(budget) {
+            if (!budget) return;
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const nextWeek = new Date(today.getTime() + 7*24*60*60*1000);
+            const upcoming = [];
+            const check = (items, type) => {
+                items.forEach((item, index) => {
+                    if (!item.recurring) return;
+                    const next = getNextMonthlyOccurrence(item.date, now);
+                    if (next && next <= nextWeek && next >= today) {
+                        upcoming.push({ ...item, type, nextDate: formatDateLocal(next), reminderKey: `${appData.activeBudgetId}:${type}:${index}:${formatDateLocal(next)}` });
+                    }
+                });
+            };
+            check(budget.wages, 'Wage');
+            check(budget.expenses, 'Expense');
+            const listDiv = document.getElementById('reminderList');
+            listDiv.innerHTML = upcoming.length ? upcoming.map(r => {
+                const label = escapeHTML(r.source || r.category || 'Recurring item');
+                return `<div class="reminder-item"><span>${escapeHTML(r.type)}: ${label} £${Number(r.amount || 0).toFixed(2)} on ${escapeHTML(r.nextDate)}</span></div>`;
+            }).join('') : 'No upcoming recurring transactions.';
+            if ('Notification' in window && Notification.permission === 'granted') {
+                upcoming.forEach(r => {
+                    const notifiedKey = `notified:${r.reminderKey}`;
+                    if (sessionStorage.getItem(notifiedKey)) return;
+                    sessionStorage.setItem(notifiedKey, '1');
+                    new Notification(`Reminder: ${r.type}`, { body: `£${Number(r.amount || 0).toFixed(2)} on ${r.nextDate}` });
+                });
+            }
+        }
+
+        // ---------- Filtering, sorting, search ----------
+        function filterAndSearch(items, searchFields) {
+            let filtered = currentFilterMonth ? items.filter(i => i.date.startsWith(currentFilterMonth)) : [...items];
+            if (searchTerm) {
+                const term = searchTerm.toLowerCase();
+                filtered = filtered.filter(i => searchFields.some(f => String(i[f]||'').toLowerCase().includes(term)));
+            }
+            filtered.sort((a,b) => {
+                const f = sortState.field, o = sortState.order === 'asc' ? 1 : -1;
+                if (f === 'date') return a.date.localeCompare(b.date) * o;
+                if (f === 'amount') return (a.amount - b.amount) * o;
+                return 0;
+            });
+            return filtered;
+        }
+
+        // ---------- Render all ----------
+        function renderAll() {
+            const budget = getActiveBudget();
+            if (!budget) return;
+            renderDashboard(budget);
+            renderTables(budget);
+            renderBudgetSelector();
+            showReminders(budget);
+            updateExpenseChart(budget);
+            // Yearly report is rendered only when visible
+            if (!document.getElementById('yearlyReport').classList.contains('hidden')) renderYearlyReport();
+        }
+
+        function renderDashboard(budget) {
+            const fw = filterAndSearch(budget.wages, ['date','source','amount']);
+            const fe = filterAndSearch(budget.expenses, ['date','category','description','amount']);
+            const income = fw.reduce((s,w)=>s+w.amount,0), exp = fe.reduce((s,e)=>s+e.amount,0);
+            const bal = income - exp, goal = budget.budgetGoal||0;
+            const rawPct = goal>0 ? (exp/goal)*100 : 0;
+            const pct = goal>0 ? Math.min(100, rawPct) : 0;
+            const overBudget = goal>0 && exp>goal ? `<div style="font-size:0.8rem; color:var(--red); margin-top:0.25rem;">£${(exp-goal).toFixed(2)} over budget</div>` : '';
+            document.getElementById('dashboard').innerHTML = `
+                <div class="card"><div class="label">Income</div><div class="value" style="color:var(--green)">£${income.toFixed(2)}</div></div>
+                <div class="card"><div class="label">Expenses</div><div class="value" style="color:var(--red)">£${exp.toFixed(2)}</div></div>
+                <div class="card"><div class="label">Balance</div><div class="value">£${bal.toFixed(2)}</div></div>
+                <div class="card"><div class="label">Budget Goal</div><div class="value">£${goal.toFixed(2)}</div>
+                    <div class="progress-container"><span style="font-size:0.8rem">${rawPct.toFixed(0)}% used</span>
+                        <div class="progress-bar"><div class="progress-fill ${exp>goal&&goal>0?'over':''}" style="width:${pct}%"></div></div>
+                        ${overBudget}
+                    </div>
+                </div>`;
+        }
+
+        function renderTables(budget) {
+            const fw = filterAndSearch(budget.wages, ['date','source','amount']);
+            const fe = filterAndSearch(budget.expenses, ['date','category','description','amount']);
+            const wtbody = document.querySelector('#wageTable tbody');
+            wtbody.innerHTML = fw.map(w => {
+                const idx = budget.wages.indexOf(w);
+                return `<tr><td>${escapeHTML(w.date)}</td><td>£${Number(w.amount || 0).toFixed(2)}</td><td>${escapeHTML(w.source||'')}</td><td>${w.recurring?'🔁':''}</td>
+                    <td><button class="danger btn-sm" onclick="deleteWage(${idx})">Del</button></td></tr>`;
+            }).join('');
+            const etbody = document.querySelector('#expenseTable tbody');
+            etbody.innerHTML = fe.map(e => {
+                const idx = budget.expenses.indexOf(e);
+                return `<tr><td>${escapeHTML(e.date)}</td><td>£${Number(e.amount || 0).toFixed(2)}</td><td>${escapeHTML(e.category||'')}</td><td>${escapeHTML(e.description||'')}</td><td>${e.recurring?'🔁':''}</td>
+                    <td><button class="danger btn-sm" onclick="deleteExpense(${idx})">Del</button></td></tr>`;
+            }).join('');
+        }
+
+        window.deleteWage = (idx) => { getActiveBudget().wages.splice(idx,1); saveAndEncrypt(); renderAll(); };
+        window.deleteExpense = (idx) => { getActiveBudget().expenses.splice(idx,1); saveAndEncrypt(); renderAll(); };
+
+        // ---------- Expense pie chart ----------
+        function updateExpenseChart(budget) {
+            if (!window.Chart) return;
+            const fe = filterAndSearch(budget.expenses, ['date','category','description','amount']);
+            const cats = {};
+            fe.forEach(e => { const c = e.category||'Uncategorized'; cats[c] = (cats[c]||0)+e.amount; });
+            const labels = Object.keys(cats), data = Object.values(cats);
+            if (expenseChart) expenseChart.destroy();
+            const ctx = document.getElementById('expenseChart').getContext('2d');
+            expenseChart = new Chart(ctx, {
+                type: 'pie',
+                data: { labels, datasets: [{ data, backgroundColor: ['#f87171','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee','#38bdf8','#818cf8','#c084fc','#e879f9'] }] },
+                options: { responsive: true }
+            });
+        }
+
+        // ---------- Yearly Report ----------
+        function renderYearlyReport() {
+            const budget = getActiveBudget();
+            if (!budget) return;
+            if (!window.Chart) {
+                document.getElementById('yearlySummary').innerHTML = '<div class="card"><div class="label">Charts unavailable offline until Chart.js has loaded once.</div></div>';
+                return;
+            }
+            const year = parseInt(document.getElementById('yearSelect').value);
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const incomeByMonth = Array(12).fill(0), expByMonth = Array(12).fill(0);
+            budget.wages.forEach(w => {
+                const [y,m] = w.date.split('-'); if (parseInt(y) === year) incomeByMonth[parseInt(m)-1] += w.amount;
+            });
+            budget.expenses.forEach(e => {
+                const [y,m] = e.date.split('-'); if (parseInt(y) === year) expByMonth[parseInt(m)-1] += e.amount;
+            });
+            const totalIncome = incomeByMonth.reduce((a,b)=>a+b,0);
+            const totalExp = expByMonth.reduce((a,b)=>a+b,0);
+            document.getElementById('yearlySummary').innerHTML = `
+                <div class="card"><div class="label">Income</div><div class="value" style="color:var(--green)">£${totalIncome.toFixed(2)}</div></div>
+                <div class="card"><div class="label">Expenses</div><div class="value" style="color:var(--red)">£${totalExp.toFixed(2)}</div></div>
+                <div class="card"><div class="label">Net</div><div class="value">£${(totalIncome-totalExp).toFixed(2)}</div></div>`;
+            if (yearlyChart) yearlyChart.destroy();
+            const ctx = document.getElementById('yearlyChart').getContext('2d');
+            yearlyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [
+                        { label: 'Income', data: incomeByMonth, backgroundColor: 'rgba(74,222,128,0.6)' },
+                        { label: 'Expenses', data: expByMonth, backgroundColor: 'rgba(248,113,113,0.6)' }
+                    ]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        document.getElementById('yearlyReportBtn').addEventListener('click', () => {
+            const reportDiv = document.getElementById('yearlyReport');
+            reportDiv.classList.toggle('hidden');
+            if (!reportDiv.classList.contains('hidden')) {
+                const yearSelect = document.getElementById('yearSelect');
+                const currentYear = new Date().getFullYear();
+                yearSelect.innerHTML = '';
+                for (let y = currentYear; y >= currentYear-5; y--) {
+                    const opt = document.createElement('option'); opt.value = y; opt.textContent = y; yearSelect.appendChild(opt);
+                }
+                yearSelect.value = currentYear;
+                renderYearlyReport();
+            }
+        });
+        document.getElementById('yearSelect').addEventListener('change', renderYearlyReport);
+        document.getElementById('closeYearlyBtn').addEventListener('click', () => {
+            document.getElementById('yearlyReport').classList.add('hidden');
+        });
+
+        // ---------- Search, sort, month filter ----------
+        document.getElementById('searchBox').addEventListener('input', e => { searchTerm = e.target.value; renderAll(); });
+        document.getElementById('applyFilter').addEventListener('click', () => { currentFilterMonth = document.getElementById('filterMonth').value; renderAll(); });
+        document.getElementById('resetFilter').addEventListener('click', () => { currentFilterMonth = null; document.getElementById('filterMonth').value=''; renderAll(); });
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (sortState.field === field) sortState.order = sortState.order==='asc'?'desc':'asc';
+                else { sortState.field = field; sortState.order = 'asc'; }
+                renderAll();
+            });
+        });
+
+        // ---------- Forms ----------
+        document.getElementById('wageForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const budget = getActiveBudget();
+            budget.wages.push({ date: document.getElementById('wageDate').value,
+                amount: parseFloat(document.getElementById('wageAmount').value),
+                source: document.getElementById('wageSource').value.trim(),
+                recurring: document.getElementById('wageRecurring').checked });
+            saveAndEncrypt(); this.reset(); document.getElementById('wageDate').valueAsDate = new Date(); renderAll();
+        });
+        document.getElementById('expenseForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const budget = getActiveBudget();
+            budget.expenses.push({ date: document.getElementById('expenseDate').value,
+                amount: parseFloat(document.getElementById('expenseAmount').value),
+                category: document.getElementById('expenseCategory').value.trim(),
+                description: document.getElementById('expenseDesc').value.trim(),
+                recurring: document.getElementById('expenseRecurring').checked });
+            saveAndEncrypt(); this.reset(); document.getElementById('expenseDate').valueAsDate = new Date(); renderAll();
+        });
+        document.getElementById('setBudgetGoal').addEventListener('click', () => {
+            const val = parseFloat(document.getElementById('budgetGoalInput').value);
+            if (!isNaN(val) && val>=0) { getActiveBudget().budgetGoal = val; saveAndEncrypt(); renderAll(); }
+        });
+
+        function isValidTransaction(t, type) {
+            if (!t || typeof t !== 'object') return false;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(String(t.date || ''))) return false;
+            if (typeof t.amount !== 'number' || !Number.isFinite(t.amount) || t.amount < 0) return false;
+            if (typeof t.recurring !== 'boolean') return false;
+            if (type === 'wage' && typeof (t.source || '') !== 'string') return false;
+            if (type === 'expense' && (typeof (t.category || '') !== 'string' || typeof (t.description || '') !== 'string')) return false;
+            return true;
+        }
+
+        function validateImportedData(data) {
+            if (!data || !Array.isArray(data.budgets) || typeof data.activeBudgetId !== 'string') return false;
+            if (data.budgets.length < 1) return false;
+            const ids = new Set();
+            for (const b of data.budgets) {
+                if (!b || typeof b.id !== 'string' || typeof b.name !== 'string') return false;
+                if (ids.has(b.id)) return false;
+                ids.add(b.id);
+                if (!Array.isArray(b.wages) || !Array.isArray(b.expenses)) return false;
+                if (typeof b.budgetGoal !== 'number' || !Number.isFinite(b.budgetGoal) || b.budgetGoal < 0) return false;
+                if (!b.wages.every(w => isValidTransaction(w, 'wage'))) return false;
+                if (!b.expenses.every(e => isValidTransaction(e, 'expense'))) return false;
+            }
+            return ids.has(data.activeBudgetId);
+        }
+
+        function csvCell(value) {
+            let text = String(value ?? '');
+            if (/^[=+\-@]/.test(text)) text = `'${text}`;
+            return `"${text.replace(/"/g, '""')}"`;
+        }
+
+        // ---------- Export / Import / Clear ----------
+        document.getElementById('exportJSON').addEventListener('click', () => {
+            const blob = new Blob([JSON.stringify(appData,null,2)], {type:'application/json'});
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='budget_backup.json'; a.click();
+        });
+        document.getElementById('importJSON').addEventListener('click', () => document.getElementById('importFile').click());
+        document.getElementById('importFile').addEventListener('change', function(e) {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                try {
+                    const data = JSON.parse(ev.target.result);
+                    if (validateImportedData(data)) { appData = data; saveAndEncrypt(); renderAll(); alert('Imported.'); }
+                    else alert('Invalid or unsafe backup format.');
+                } catch { alert('Error reading file.'); }
+            };
+            reader.readAsText(file);
+        });
+        document.getElementById('exportCSV').addEventListener('click', () => {
+            const budget = getActiveBudget();
+            const rows = [['Type','Date','Amount','Source/Category','Description','Recurring']];
+            budget.wages.forEach(w => rows.push(['Wage', w.date, w.amount, w.source || '', '', w.recurring ? 'Yes' : 'No']));
+            budget.expenses.forEach(e => rows.push(['Expense', e.date, e.amount, e.category || '', e.description || '', e.recurring ? 'Yes' : 'No']));
+            const csv = rows.map(row => row.map(csvCell).join(',')).join('\n') + '\n';
+            const blob = new Blob([csv], {type:'text/csv'});
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='transactions.csv'; a.click();
+        });
+        document.getElementById('clearDataBtn' ).addEventListener('click', () => {
+            if (confirm('Delete ALL budgets? Cannot undo!')) {
+                appData = { budgets: [{ id:'1', name:'Main', wages:[], expenses:[], budgetGoal:0 }], activeBudgetId:'1' };
+                saveAndEncrypt(); renderAll();
+            }
+        });
+
+        // ---------- PIN Lock UI ----------
+        document.getElementById('setPinBtn').addEventListener('click', () => {
+            const pin = prompt('Create a numeric PIN (4+ digits) for screen lock:');
+            if (pin && /^\d{4,}$/.test(pin)) setSessionPIN(pin);
+            else alert('PIN must be at least 4 digits, numbers only.');
+        });
+        document.getElementById('lockNowBtn').addEventListener('click', showPINOverlay);
+
+        // Activity listeners for idle reset
+        ['click', 'keydown', 'mousemove', 'touchstart'].forEach(evt =>
+            document.addEventListener(evt, () => { if (!document.getElementById('pinOverlay').classList.contains('hidden')) return; resetIdleTimer(); })
+        );
+
+        // ---------- Encryption prompt flow ----------
+        function resetEncryptionButton(handler, label) {
+            const btn = document.getElementById('encryptSubmit');
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+            newBtn.textContent = label;
+            newBtn.addEventListener('click', handler);
+            return newBtn;
+        }
+
+        function showEncryptionPrompt() {
+            if (localStorage.getItem('budgetAppEncrypted')) showUnlockPrompt();
+            else showSetupPrompt();
+        }
+
+        function showUnlockPrompt() {
+            const overlay = document.getElementById('encryptOverlay');
+            document.getElementById('appContent').classList.add('hidden');
+            overlay.classList.remove('hidden');
+            document.getElementById('encryptTitle').textContent = '🔐 Unlock Your Budget';
+            document.getElementById('encryptMsg').textContent = 'Enter your password to decrypt.';
+            document.getElementById('encryptPasswordConfirm').classList.add('hidden');
+            document.getElementById('encryptPassword').value = '';
+            resetEncryptionButton(async () => {
+                const pw = document.getElementById('encryptPassword').value;
+                const dec = await loadDecrypted(pw);
+                if (dec && validateImportedData(dec)) {
+                    appData = dec;
+                    currentPassword = pw;
+                    overlay.classList.add('hidden');
+                    document.getElementById('appContent').classList.remove('hidden');
+                    clearSessionPIN();
+                    requestNotificationPermission();
+                    renderAll();
+                    document.getElementById('encryptPassword').value = '';
+                } else {
+                    alert('Wrong password or corrupted data.');
+                }
+            }, 'Decrypt');
+        }
+
+        function showSetupPrompt() {
+            const overlay = document.getElementById('encryptOverlay');
+            document.getElementById('appContent').classList.add('hidden');
+            overlay.classList.remove('hidden');
+            document.getElementById('encryptTitle').textContent = '🔐 Set Up Encryption';
+            document.getElementById('encryptMsg').textContent = 'Create a strong password. Your data will be encrypted with AES-256-GCM (PBKDF2 600k iterations).';
+            document.getElementById('encryptPasswordConfirm').classList.remove('hidden');
+            document.getElementById('encryptPassword').value = '';
+            document.getElementById('encryptPasswordConfirm').value = '';
+            resetEncryptionButton(async () => {
+                const pw = document.getElementById('encryptPassword').value;
+                const confirm = document.getElementById('encryptPasswordConfirm').value;
+                if (!pw || pw !== confirm) { alert('Passwords do not match.'); return; }
+                appData = { budgets: [{ id:'1', name:'Main', wages:[], expenses:[], budgetGoal:0 }], activeBudgetId:'1' };
+                currentPassword = pw;
+                await storeEncrypted(appData, pw);
+                overlay.classList.add('hidden');
+                document.getElementById('appContent').classList.remove('hidden');
+                clearSessionPIN();
+                requestNotificationPermission();
+                renderAll();
+                document.getElementById('encryptPassword').value = '';
+                document.getElementById('encryptPasswordConfirm').value = '';
+            }, 'Encrypt & Start');
+        }
+
+        async function changePassword() {
+            const old = prompt('Current password:');
+            if (old !== currentPassword) { alert('Wrong.'); return; }
+            const newPw = prompt('New password:');
+            if (!newPw) return;
+            currentPassword = newPw;
+            await storeEncrypted(appData, newPw);
+            setSaveStatus('Password changed and data re-encrypted.');
+            alert('Password changed.');
+        }
+
+        function initPWA() {
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('./sw.js').catch(err => console.warn('Service worker registration failed:', err));
+                });
+            }
+
+            const installBanner = document.getElementById('installBanner');
+            const installBtn = document.getElementById('installAppBtn');
+            const dismissBtn = document.getElementById('dismissInstallBtn');
+            const installHelp = document.getElementById('installHelp');
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+            const dismissed = localStorage.getItem('installBannerDismissed') === '1';
+
+            function showInstallBanner() {
+                if (!installBanner || isStandalone || dismissed) return;
+                installBanner.classList.remove('hidden');
+            }
+
+            if (isIOS) {
+                installBtn.textContent = 'How to install';
+                installHelp.textContent = 'On iPhone/iPad: open in Safari, tap Share, then Add to Home Screen.';
+                showInstallBanner();
+            }
+
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredInstallPrompt = e;
+                showInstallBanner();
+            });
+
+            installBtn?.addEventListener('click', async () => {
+                if (deferredInstallPrompt) {
+                    deferredInstallPrompt.prompt();
+                    await deferredInstallPrompt.userChoice;
+                    deferredInstallPrompt = null;
+                    installBanner.classList.add('hidden');
+                } else if (isIOS) {
+                    alert('Install on iPhone/iPad: tap Safari Share, then Add to Home Screen.');
+                }
+            });
+
+            dismissBtn?.addEventListener('click', () => {
+                localStorage.setItem('installBannerDismissed', '1');
+                installBanner.classList.add('hidden');
+            });
+
+            function updateOnlineState() {
+                document.body.classList.toggle('offline', !navigator.onLine);
+            }
+            window.addEventListener('online', updateOnlineState);
+            window.addEventListener('offline', updateOnlineState);
+            updateOnlineState();
+        }
+
+        async function initApp() {
+            applyTheme();
+            if (!window.crypto?.subtle) {
+                alert('Encryption is not available in this browser/context. Use HTTPS, localhost, Safari, Chrome, Edge, or another modern browser.');
+                return;
+            }
+            document.getElementById('changePasswordBtn').addEventListener('click', changePassword);
+            initPWA();
+            showEncryptionPrompt();
+        }
+
+        window.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
