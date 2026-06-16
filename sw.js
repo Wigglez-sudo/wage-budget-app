@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'budget-tracker-pro-v1.0.0';
+const CACHE_VERSION = 'budget-tracker-pro-v2-ui-overhaul';
 const APP_SHELL = [
   './',
   './index.html',
