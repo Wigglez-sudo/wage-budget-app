@@ -13,8 +13,8 @@
         const RECURRENCE_LABELS = { none: 'One-off', ...PERIOD_LABELS };
         const VALID_PERIODS = new Set(Object.keys(PERIOD_LABELS));
         const VALID_RECURRENCES = new Set(['none', ...Object.keys(PERIOD_LABELS)]);
-        const CURRENT_APP_VERSION = '2.1.1';
-        const TAB_KEYS = ['home', 'add', 'import', 'plan', 'activity', 'reports', 'security'];
+        const CURRENT_APP_VERSION = '2.1.2';
+        const TAB_KEYS = ['home', 'add', 'import', 'plan', 'activity', 'reports', 'security', 'settings'];
         const DEFAULT_APP_META = { version: CURRENT_APP_VERSION, publishedAt: '2026-06-17', notes: [
             'Security hardening release. Your data, budgets and existing password all keep working.',
             'Stronger password rules: guessable passwords like a word plus a year are now blocked. A 4-word passphrase is the easiest way to pass.',

@@ -1,11 +1,11 @@
 {
-  "version": "2.1.1",
+  "version": "2.1.2",
   "publishedAt": "2026-06-17",
   "notes": [
+    "Fixed the new Settings tab opening the Home page instead of Settings.",
     "Fixed the top bar overlapping the iPhone Dynamic Island and notch, so headings are no longer cut off.",
     "Fixed the Install card at the bottom being hidden behind the navigation bar — its buttons are now reachable.",
-    "Fixed the lock icon: it now opens the Security tab's screen-lock card so you can actually set a PIN.",
-    "New Settings tab with a Reset BudgetVault option. The reset is locked behind a tick box and typing RESET, so it can't happen by accident.",
-    "Clearer guidance for AI import: on GitHub Pages there's no backend, so paste your full Vercel endpoint URL. Your data and budgets are unchanged."
+    "Fixed the lock icon: it now opens the Security tab's screen-lock card so you can set a PIN.",
+    "Added a Settings tab with a Reset BudgetVault option, locked behind a tick box and typing RESET so it can't happen by accident."
   ]
 }

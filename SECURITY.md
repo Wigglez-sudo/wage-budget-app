@@ -1,5 +1,7 @@
 # BudgetVault — Security Testing & Fixes (v2.1.0)
 
+> **Still current as of v2.1.2.** Releases v2.1.1 and v2.1.2 were UI / bug-fix updates with **no cryptographic or security changes** — the encryption, password policy, endpoints and access control described here are unchanged. (v2.1.1 added a Settings → "Reset BudgetVault" action that clears local data, caches and the service worker *on the device only*; nothing is sent anywhere.)
+
 This document explains how BudgetVault protects your data, the attacks that were
 run against it, the weaknesses those attacks revealed, and exactly what was changed
 to fix them. It is written to be read start to finish — no security background needed.

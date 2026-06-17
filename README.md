@@ -1,12 +1,26 @@
 # 🛡️ BudgetVault
 
-**Private budgeting that stays with you** · v2.1.0
+**Private budgeting that stays with you** · v2.1.2
 
 BudgetVault is a privacy-first budgeting app you can install on **iPhone, iPad, Android, tablets, laptops, and desktop**. It works offline after install, keeps your budget on your device, and protects saved data with strong local encryption.
 
 > **Privacy-first. Offline-first. Strong local encryption.**
 
 > 🔐 **Security:** This build was security-tested, including a real offline brute-force attempt against an encrypted vault. The full write-up of what was tested and fixed is in **[`SECURITY.md`](SECURITY.md)**.
+
+---
+
+## 🆕 What's new in v2.1.1 – v2.1.2 — mobile fixes & a Settings tab
+
+Layout and usability fixes from real iPhone testing. Your data, password, and encryption are unchanged.
+
+- 📱 **Fits the iPhone Dynamic Island.** The top bar no longer hides behind the notch/island.
+- 👇 **The Install card is reachable again.** Its buttons were stuck behind the bottom navigation bar.
+- ⚙️ **New Settings tab** with a **Reset BudgetVault** option. It wipes everything on the device back to a fresh setup — and it's deliberately hard to trigger: you have to tick a box *and* type `RESET` first.
+- 🔑 **Setting a PIN is fixed.** The lock icon now opens the screen-lock card in Security so you can actually set one.
+- 🛟 **Clearer AI-import setup.** On GitHub Pages there's no backend, so the app now tells you to paste your full Vercel endpoint URL.
+
+> v2.1.2 is a quick follow-up that fixes the new Settings tab accidentally opening the Home page.
 
 ---
 
@@ -213,7 +227,7 @@ KDF_PEPPER=at-least-16-random-characters-keep-this-safe
 
 ## 🧪 Test checklist
 
-After deploying: app opens · password setup/unlock works · sidebar (desktop) and bottom nav (mobile) switch tabs · add income/expense works · the Overview dial and figures update · charts render · encrypted backup exports · AI Import → Test connection works · PDF upload returns transactions · review table edits work · selected rows import · category corrections appear under Import learning.
+After deploying: app opens · password setup/unlock works · sidebar (desktop) and bottom nav (mobile) switch tabs · the **Settings** tab opens Settings (not Home) · add income/expense works · the Overview dial and figures update · charts render · encrypted backup exports · AI Import → Test connection works · PDF upload returns transactions · review table edits work · selected rows import · category corrections appear under Import learning · the guarded reset (tick box + type `RESET`) returns the app to first-run setup.
 
 ---
 
