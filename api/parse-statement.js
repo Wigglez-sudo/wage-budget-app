@@ -1,13 +1,35 @@
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 
+function originAllowed(req) {
+  const allowed = process.env.ALLOWED_ORIGIN || '*';
+  if (allowed === '*') return true;
+  const list = allowed.split(',').map(s => s.trim()).filter(Boolean);
+  const origin = req.headers.origin || '';
+  // Requests with no Origin header (server-to-server / curl) can't be origin-checked.
+  // For those, the optional shared secret is the only gate (see accessDenied).
+  if (!origin) return true;
+  return list.includes(origin);
+}
+
 function setCors(req, res) {
   const allowed = process.env.ALLOWED_ORIGIN || '*';
   const requestOrigin = req.headers.origin || '';
-  const origin = allowed === '*' ? '*' : (allowed.split(',').map(s => s.trim()).includes(requestOrigin) ? requestOrigin : allowed.split(',')[0].trim());
+  const list = allowed.split(',').map(s => s.trim()).filter(Boolean);
+  const origin = allowed === '*' ? '*' : (list.includes(requestOrigin) ? requestOrigin : (list[0] || ''));
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-budgetvault-key');
+}
+
+// Server-side access control. Setting ALLOWED_ORIGIN blocks cross-origin browser
+// abuse; setting IMPORT_SHARED_SECRET additionally blocks any caller (including
+// curl) that does not present the matching x-budgetvault-key header.
+function accessDenied(req) {
+  const secret = process.env.IMPORT_SHARED_SECRET;
+  if (secret && req.headers['x-budgetvault-key'] !== secret) return 'invalid or missing key';
+  if (!originAllowed(req)) return 'origin not allowed';
+  return null;
 }
 
 function readJson(req) {
@@ -87,6 +109,8 @@ export default async function handler(req, res) {
   setCors(req, res);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
+  const denied = accessDenied(req);
+  if (denied) return res.status(403).json({ error: `Forbidden: ${denied}` });
   if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OPENAI_API_KEY is not configured in Vercel.' });
 
   try {
@@ -99,7 +123,7 @@ export default async function handler(req, res) {
     const learningRules = Array.isArray(body.learningRules) ? body.learningRules.slice(0, 150) : [];
     const existingHints = Array.isArray(body.existingHints) ? body.existingHints.slice(0, 80) : [];
 
-    const prompt = `You are parsing a UK personal bank statement for BudgetVault. Extract visible transactions only. Return dates as YYYY-MM-DD. Use positive amounts and set type to income for money in/deposits, expense for money out/payments. Suggested categories must use the user's categories where possible. If uncertain, set needsReview true and lower confidence. Apply learning rules for merchant/category preferences when they clearly match. Do not invent missing transactions.\n\nUser categories: ${JSON.stringify(categories)}\nLearning rules: ${JSON.stringify(learningRules)}\nExisting recent transactions for duplicate awareness: ${JSON.stringify(existingHints)}\nCurrency preference: ${String(body.currency || 'GBP')}`;
+    const prompt = `You are parsing a UK personal bank statement for BudgetVault. Extract visible transactions only. Return dates as YYYY-MM-DD. Use positive amounts and set type to income for money in/deposits, expense for money out/payments. Suggested categories must use the user's categories where possible. If a money-out transaction appears to be a transfer to savings, ISA, saver, savings pot, premium bonds, or another savings account, suggest the category Savings when that category is available. If uncertain, set needsReview true and lower confidence. Apply learning rules for merchant/category preferences when they clearly match. Do not invent missing transactions.\n\nUser categories: ${JSON.stringify(categories)}\nLearning rules: ${JSON.stringify(learningRules)}\nExisting recent transactions for duplicate awareness: ${JSON.stringify(existingHints)}\nCurrency preference: ${String(body.currency || 'GBP')}`;
 
     const openAiBody = {
       model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
