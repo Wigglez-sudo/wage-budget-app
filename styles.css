@@ -254,8 +254,11 @@ label { color: var(--text-dim); font-weight: 600; font-size: 0.86rem; }
 .topbar {
     position: sticky; top: 0; z-index: 30;
     display: flex; align-items: center; gap: 0.6rem;
-    padding: 0.7rem 0; margin-bottom: 0.6rem;
-    background: linear-gradient(180deg, var(--bg) 62%, transparent);
+    /* Top inset clears the iPhone Dynamic Island / notch (viewport-fit=cover). */
+    padding: calc(0.7rem + env(safe-area-inset-top)) 0 0.7rem;
+    margin-bottom: 0.6rem;
+    /* Solid through the inset strip so scrolled content never shows behind the island. */
+    background: linear-gradient(180deg, var(--bg) calc(env(safe-area-inset-top) + 70%), transparent);
 }
 .topbar-brand { display: flex; align-items: center; gap: 0.55rem; margin-right: auto; }
 .topbar-brand img { width: 30px; height: 30px; }
@@ -627,6 +630,27 @@ canvas { max-width: 100%; }
 .install-actions { display: flex; gap: 0.45rem; flex-wrap: wrap; align-items: center; }
 .update-banner { border-color: var(--pos); background: linear-gradient(180deg, var(--pos-soft), var(--surface)); }
 
+/* The install banner sits at the end of <body>, above the fixed mobile bottom-nav.
+   Centre it to the content width and reserve space so its buttons aren't hidden
+   behind the nav on phones. */
+#installBanner {
+    width: min(var(--content-max), 100%);
+    margin-inline: auto;
+    margin-bottom: calc(6rem + env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+}
+@media (min-width: 1024px) {
+    /* Sidebar layout hides the bottom-nav, so no extra clearance is needed. */
+    #installBanner { margin-bottom: 1.25rem; }
+}
+
+/* Settings → Danger zone reset gate */
+.reset-gate { margin-top: 0.9rem; display: grid; gap: 0.7rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
+.warn-callout { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.warn-callout b { color: var(--warn); }
+#resetAppBtn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.35); box-shadow: none; }
+
 /* ----------------------------- Modals ----------------------------- */
 .modal-overlay {
     position: fixed; inset: 0; z-index: 1000;
@@ -717,7 +741,7 @@ canvas { max-width: 100%; }
     .app-main { margin-left: var(--sidebar-w); }
     .topbar-brand, .topbar .icon-btn[data-tab-trigger] { display: none; }
     .app-content { padding: 1.1rem 1.6rem 2.5rem; }
-    .topbar { background: transparent; padding-top: 1rem; }
+    .topbar { background: transparent; padding-top: calc(1rem + env(safe-area-inset-top)); }
     .bottom-nav { display: none; }
     .app-content { padding-bottom: 2.5rem; }
     .guide-modal-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }

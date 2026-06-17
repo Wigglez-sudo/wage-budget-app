@@ -13,7 +13,7 @@
         const RECURRENCE_LABELS = { none: 'One-off', ...PERIOD_LABELS };
         const VALID_PERIODS = new Set(Object.keys(PERIOD_LABELS));
         const VALID_RECURRENCES = new Set(['none', ...Object.keys(PERIOD_LABELS)]);
-        const CURRENT_APP_VERSION = '2.1.0';
+        const CURRENT_APP_VERSION = '2.1.1';
         const TAB_KEYS = ['home', 'add', 'import', 'plan', 'activity', 'reports', 'security'];
         const DEFAULT_APP_META = { version: CURRENT_APP_VERSION, publishedAt: '2026-06-17', notes: [
             'Security hardening release. Your data, budgets and existing password all keep working.',
@@ -466,8 +466,12 @@
         function initScreenLock() {
             buildPinPad();
             document.getElementById('setPinBtn')?.addEventListener('click', () => {
-                document.getElementById('pinInput')?.closest('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                document.getElementById('pinInput')?.focus();
+                activateTab('security');
+                requestAnimationFrame(() => {
+                    const input = document.getElementById('pinInput');
+                    input?.closest('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    input?.focus();
+                });
             });
             document.getElementById('setPinPanelBtn')?.addEventListener('click', promptForSessionPIN);
             document.getElementById('lockNowBtn')?.addEventListener('click', () => {
@@ -2449,6 +2453,52 @@ document.getElementById('clearDataBtn').addEventListener('click', () => {
         renderAll();
     }
 });
+
+// ---------- Full app reset (Settings -> Danger zone) ----------
+(function setupAppReset() {
+    const check = document.getElementById('resetAppConfirmCheck');
+    const text = document.getElementById('resetAppConfirmText');
+    const btn = document.getElementById('resetAppBtn');
+    if (!check || !text || !btn) return;
+
+    // Every key this app writes on its origin. localStorage.clear() is the real
+    // wipe; the explicit list documents intent and covers any edge host.
+    const RESET_KEYS = [
+        'activeAppTab', 'activityFilter', 'activityLimit', 'aiImportEnabled',
+        'aiImportEndpoint', 'aiImportSecret', 'budgetAppEncrypted', 'encryptionMode',
+        'hideNotificationAmounts', 'installBannerDismissed', 'lockOnBackground',
+        'lockTimeoutMinutes', 'notificationsEnabled', 'onboardingCompleted',
+        'pepperEndpoint', 'seenAppVersion', 'theme', 'viewRangeMode'
+    ];
+
+    function refreshGate() {
+        btn.disabled = !(check.checked && text.value.trim().toUpperCase() === 'RESET');
+    }
+    check.addEventListener('change', refreshGate);
+    text.addEventListener('input', refreshGate);
+
+    btn.addEventListener('click', async () => {
+        if (btn.disabled) return;
+        if (!confirm('Final check: erase ALL BudgetVault data on this device and return to setup? This cannot be undone.')) return;
+        btn.disabled = true;
+        btn.textContent = 'Resetting…';
+        try {
+            RESET_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+            try { localStorage.clear(); } catch (e) {}
+            try { sessionStorage.clear(); } catch (e) {}
+            if (window.caches && caches.keys) {
+                try { const names = await caches.keys(); await Promise.all(names.map(n => caches.delete(n))); } catch (e) {}
+            }
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+                try { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.unregister())); } catch (e) {}
+            }
+        } finally {
+            location.reload();
+        }
+    });
+
+    refreshGate();
+})();
 
 // ---------- Encryption prompt flow ----------
 
