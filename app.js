@@ -13,14 +13,16 @@
         const RECURRENCE_LABELS = { none: 'One-off', ...PERIOD_LABELS };
         const VALID_PERIODS = new Set(Object.keys(PERIOD_LABELS));
         const VALID_RECURRENCES = new Set(['none', ...Object.keys(PERIOD_LABELS)]);
-        const CURRENT_APP_VERSION = '1.3.1';
+        const CURRENT_APP_VERSION = '1.5.0';
+        const TAB_KEYS = ['home', 'add', 'import', 'plan', 'activity', 'reports', 'security'];
         const DEFAULT_APP_META = { version: CURRENT_APP_VERSION, publishedAt: '2026-06-16', notes: [
             'Updated the app with the approved BudgetVault wordmark and logo across the app shell, auth screens, and install assets.',
             'BudgetVault launch build with privacy-first branding, clearer security copy, and GitHub-ready publishing.',
             'Rebranded the app as BudgetVault with stronger privacy-first copy across the experience.',
             "What's new splash now highlights BudgetVault release notes after an update or first open.",
             'Published version check now watches app-meta.json so GitHub Pages updates can surface cleanly.',
-            'Service worker update messaging tightened for mobile and desktop users.'
+            'Service worker update messaging tightened for mobile and desktop users.',
+            'AI bank-statement import can send PDFs through your Vercel backend to OpenAI, return strict JSON, and let users review every transaction before it enters the vault.'
         ] };
 
 
@@ -46,6 +48,8 @@
         let swWaitingRef = null;
         let appMeta = cloneData(DEFAULT_APP_META);
         let remoteMeta = null;
+        let activeTab = localStorage.getItem('activeAppTab') || 'home';
+        let pendingStatementImport = [];
 
 
         function cloneData(data) {
@@ -161,6 +165,37 @@
                 applyMetaToUI(appMeta);
                 return null;
             }
+        }
+
+
+
+        function activateTab(tabKey, options = {}) {
+            const nextTab = TAB_KEYS.includes(tabKey) ? tabKey : 'home';
+            activeTab = nextTab;
+            localStorage.setItem('activeAppTab', nextTab);
+            document.querySelectorAll('[data-tab-panel]').forEach(panel => {
+                panel.classList.toggle('tab-hidden', panel.dataset.tabPanel !== nextTab);
+            });
+            document.querySelectorAll('[data-tab-trigger]').forEach(trigger => {
+                const isActive = trigger.dataset.tabTrigger === nextTab;
+                trigger.classList.toggle('is-active', isActive);
+                trigger.setAttribute('aria-selected', String(isActive));
+            });
+            if (options.scroll) {
+                const anchor = options.anchorId ? document.getElementById(options.anchorId) : document.querySelector(`[data-tab-panel="${nextTab}"]`);
+                anchor?.scrollIntoView({ behavior: options.instant ? 'auto' : 'smooth', block: 'start' });
+            }
+        }
+
+        function initSectionTabs() {
+            document.querySelectorAll('[data-tab-trigger]').forEach(trigger => {
+                trigger.addEventListener('click', event => {
+                    event.preventDefault();
+                    const isMobileNav = trigger.closest('.bottom-nav');
+                    activateTab(trigger.dataset.tabTrigger, { scroll: !!isMobileNav });
+                });
+            });
+            activateTab(activeTab, { scroll: false, instant: true });
         }
 
         function openGuideModal() { document.getElementById('guideModal')?.classList.remove('hidden'); }
@@ -453,7 +488,8 @@
                 periodStart: formatDateLocal(new Date()),
                 categories: [...DEFAULT_CATEGORIES],
                 categoryBudgets: {},
-                rolloverEnabled: false
+                rolloverEnabled: false,
+                importRules: []
             };
         }
 
@@ -477,6 +513,23 @@
                 category: String(item?.category || 'Other').trim() || 'Other',
                 description: String(item?.description || '').trim()
             };
+        }
+
+
+        function normaliseImportRules(rawRules) {
+            const rules = [];
+            const seen = new Set();
+            if (!Array.isArray(rawRules)) return rules;
+            rawRules.forEach(rule => {
+                const keyword = String(rule?.keyword || '').trim().slice(0, 64);
+                const category = String(rule?.category || '').trim().slice(0, 64);
+                if (!keyword || !category) return;
+                const key = `${keyword.toLowerCase()}::${category.toLowerCase()}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                rules.push({ keyword, category, uses: Math.max(1, Number(rule?.uses || 1)), updatedAt: String(rule?.updatedAt || new Date().toISOString()) });
+            });
+            return rules.slice(0, 150);
         }
 
         function normaliseBudget(raw, index = 0) {
@@ -507,7 +560,8 @@
                 periodStart: parseLocalDate(raw?.periodStart) ? raw.periodStart : formatDateLocal(new Date()),
                 categories: categories.length ? categories : [...DEFAULT_CATEGORIES],
                 categoryBudgets,
-                rolloverEnabled: Boolean(raw?.rolloverEnabled)
+                rolloverEnabled: Boolean(raw?.rolloverEnabled),
+                importRules: normaliseImportRules(raw?.importRules)
             };
         }
 
@@ -531,7 +585,8 @@
                 Array.isArray(b.wages) && Array.isArray(b.expenses) && Array.isArray(b.categories) &&
                 b.categoryBudgets && typeof b.categoryBudgets === 'object' && !Array.isArray(b.categoryBudgets) &&
                 Object.values(b.categoryBudgets).every(v => Number.isFinite(Number(v)) && Number(v) >= 0) &&
-                typeof b.rolloverEnabled === 'boolean' &&
+                typeof b.rolloverEnabled === 'boolean' && Array.isArray(b.importRules || []) &&
+
                 Number.isFinite(b.budgetGoal) && b.budgetGoal >= 0 &&
                 Number.isFinite(b.savingsGoal) && b.savingsGoal >= 0 &&
                 VALID_PERIODS.has(b.periodType) && parseLocalDate(b.periodStart) &&
@@ -913,6 +968,304 @@
             renderAll();
         });
 
+
+        // ---------- AI statement import ----------
+        function getAiImportSettings() {
+            return {
+                enabled: localStorage.getItem('aiImportEnabled') === '1',
+                endpoint: localStorage.getItem('aiImportEndpoint') || '/api/parse-statement'
+            };
+        }
+
+        function setAiImportStatus(message, state = '') {
+            const el = document.getElementById('aiImportStatus');
+            if (!el) return;
+            el.textContent = message;
+            el.dataset.state = state;
+        }
+
+        function updateAiImportSettingsUI() {
+            const settings = getAiImportSettings();
+            const enabled = document.getElementById('aiImportEnabledCheckbox');
+            const endpoint = document.getElementById('aiImportEndpointInput');
+            if (enabled) enabled.checked = settings.enabled;
+            if (endpoint) endpoint.value = settings.endpoint;
+        }
+
+        function saveAiImportSettings() {
+            const enabled = document.getElementById('aiImportEnabledCheckbox')?.checked ? '1' : '0';
+            const endpoint = (document.getElementById('aiImportEndpointInput')?.value || '/api/parse-statement').trim() || '/api/parse-statement';
+            localStorage.setItem('aiImportEnabled', enabled);
+            localStorage.setItem('aiImportEndpoint', endpoint);
+            setAiImportStatus(enabled === '1' ? 'AI import is enabled on this device. Upload a PDF when ready.' : 'AI import is off. Turn it on before uploading statements.', enabled === '1' ? 'saved' : '');
+        }
+
+        function endpointUrlFor(path) {
+            const endpoint = (path || getAiImportSettings().endpoint || '/api/parse-statement').trim();
+            if (/^https?:\/\//i.test(endpoint)) return endpoint;
+            return endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        }
+
+        async function testAiImportConnection() {
+            saveAiImportSettings();
+            const endpoint = endpointUrlFor(getAiImportSettings().endpoint).replace(/\/parse-statement\/?$/, '/health');
+            setAiImportStatus('Testing Vercel import service...', 'saving');
+            try {
+                const res = await fetch(endpoint, { cache: 'no-store' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                setAiImportStatus(data.openaiConfigured ? 'Connection OK. OpenAI key is configured on Vercel.' : 'Connection OK, but OPENAI_API_KEY is not configured on Vercel yet.', data.openaiConfigured ? 'saved' : 'error');
+            } catch (error) {
+                setAiImportStatus(`Connection failed: ${error.message}`, 'error');
+            }
+        }
+
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('Could not read the PDF file.'));
+                reader.onload = () => {
+                    const value = String(reader.result || '');
+                    resolve(value.includes(',') ? value.split(',').pop() : value);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function makeLearningKeyword(description) {
+            const stop = new Set(['card','payment','purchase','debit','credit','online','mobile','bank','transfer','pos','visa','mastercard','contactless','faster','payment','ltd','limited','the','and','for','from']);
+            const words = String(description || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9£$\s]/g, ' ')
+                .split(/\s+/)
+                .filter(word => word.length >= 3 && !/^\d+$/.test(word) && !stop.has(word))
+                .slice(0, 3);
+            return words.join(' ').trim();
+        }
+
+        function findImportDuplicate(budget, tx) {
+            const list = tx.type === 'income' ? (budget.wages || []) : (budget.expenses || []);
+            const desc = String(tx.description || tx.merchant || '').toLowerCase().replace(/\s+/g, ' ').trim();
+            return list.some(item => {
+                const itemDesc = String(item.source || item.description || '').toLowerCase().replace(/\s+/g, ' ').trim();
+                return item.date === tx.date && Math.abs(Number(item.amount || 0) - Number(tx.amount || 0)) < 0.01 && itemDesc === desc;
+            });
+        }
+
+        function applyLocalImportLearning(tx, budget) {
+            if (!budget || tx.type !== 'expense') return tx;
+            const desc = String(tx.description || tx.merchant || '').toLowerCase();
+            const rule = (budget.importRules || []).find(r => r.keyword && desc.includes(String(r.keyword).toLowerCase()));
+            if (rule) {
+                return { ...tx, category: rule.category, confidence: Math.max(Number(tx.confidence || 0), 0.92), learnedCategory: true };
+            }
+            return tx;
+        }
+
+        function normaliseImportedTransaction(raw, index, budget) {
+            const rawAmount = Number(raw?.amount ?? raw?.rawAmount ?? 0);
+            let type = String(raw?.type || '').toLowerCase();
+            if (!['income', 'expense'].includes(type)) type = rawAmount < 0 ? 'expense' : 'income';
+            const amount = Math.abs(Number.isFinite(rawAmount) ? rawAmount : Number(raw?.amountPositive || 0));
+            const date = parseLocalDate(raw?.date) ? raw.date : formatDateLocal(new Date());
+            const description = String(raw?.description || raw?.merchant || raw?.source || `Statement item ${index + 1}`).trim();
+            const suggestedCategory = type === 'expense' ? String(raw?.suggestedCategory || raw?.category || 'Other').trim() || 'Other' : '';
+            const source = type === 'income' ? String(raw?.source || raw?.merchant || description || 'Statement income').trim() : '';
+            const confidence = Math.max(0, Math.min(1, Number(raw?.confidence ?? 0.5)));
+            const base = {
+                id: `import-${Date.now()}-${index}`,
+                include: true,
+                date,
+                type,
+                amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+                category: suggestedCategory,
+                originalCategory: suggestedCategory,
+                source,
+                description,
+                confidence,
+                sourcePage: raw?.sourcePage || raw?.page || '',
+                notes: String(raw?.notes || '').trim(),
+                merchantKeyword: String(raw?.merchantKeyword || makeLearningKeyword(description)).trim(),
+                needsReview: Boolean(raw?.needsReview) || confidence < 0.75 || !amount,
+                duplicate: false,
+                userEdited: false,
+                learnedCategory: false
+            };
+            const learned = applyLocalImportLearning(base, budget);
+            learned.duplicate = findImportDuplicate(budget, learned);
+            if (learned.duplicate) learned.include = false;
+            return learned;
+        }
+
+        function renderImportLearningRules() {
+            const budget = getActiveBudget();
+            const wrap = document.getElementById('importLearningRules');
+            if (!wrap) return;
+            const rules = normaliseImportRules(budget?.importRules || []);
+            wrap.innerHTML = rules.length ? rules.map(rule => `<span class="category-chip">${escapeHTML(rule.keyword)} → ${escapeHTML(rule.category)} <small>(${Number(rule.uses || 1)}×)</small></span>`).join('') : '<span class="muted">No learned rules yet. Correct categories during AI import to build them.</span>';
+        }
+
+        function categoryOptionsForImport(selected) {
+            const budget = getActiveBudget();
+            const categories = uniqueClean([...(budget?.categories || DEFAULT_CATEGORIES), selected || 'Other']);
+            return categories.map(cat => `<option value="${escapeHTML(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHTML(cat)}</option>`).join('');
+        }
+
+        function renderImportReview() {
+            const tbody = document.querySelector('#aiImportReviewTable tbody');
+            const summary = document.getElementById('aiImportSummary');
+            if (!tbody || !summary) return;
+            const rows = pendingStatementImport || [];
+            const selectedCount = rows.filter(r => r.include).length;
+            const lowConfidence = rows.filter(r => r.needsReview).length;
+            const duplicates = rows.filter(r => r.duplicate).length;
+            summary.classList.toggle('empty-state', !rows.length);
+            summary.textContent = rows.length ? `${rows.length} transaction${rows.length === 1 ? '' : 's'} found • ${selectedCount} selected • ${lowConfidence} need review • ${duplicates} possible duplicate${duplicates === 1 ? '' : 's'}` : 'No parsed statement waiting for review.';
+            tbody.innerHTML = rows.length ? rows.map((row, index) => {
+                const confPct = Math.round(Number(row.confidence || 0) * 100);
+                const badgeClass = row.duplicate || row.needsReview ? 'needs-review-chip' : 'reviewed-chip';
+                return `<tr data-import-index="${index}" class="${row.duplicate ? 'import-duplicate-row' : ''}">
+                    <td data-label="Use"><input type="checkbox" data-import-field="include" ${row.include ? 'checked' : ''}></td>
+                    <td data-label="Date"><input type="date" data-import-field="date" value="${escapeHTML(row.date)}"></td>
+                    <td data-label="Type"><select data-import-field="type"><option value="expense" ${row.type === 'expense' ? 'selected' : ''}>Money out</option><option value="income" ${row.type === 'income' ? 'selected' : ''}>Money in</option></select></td>
+                    <td data-label="Amount"><input type="number" min="0.01" step="0.01" inputmode="decimal" data-import-field="amount" value="${Number(row.amount || 0).toFixed(2)}"></td>
+                    <td data-label="Category / Source">${row.type === 'income' ? `<input type="text" data-import-field="source" value="${escapeHTML(row.source || 'Statement income')}">` : `<select data-import-field="category">${categoryOptionsForImport(row.category || 'Other')}</select>`}</td>
+                    <td data-label="Description"><input type="text" data-import-field="description" value="${escapeHTML(row.description || '')}"><small>${row.duplicate ? 'Possible duplicate. ' : ''}${row.learnedCategory ? 'Learned category applied. ' : ''}${row.notes ? escapeHTML(row.notes) : ''}</small></td>
+                    <td data-label="Confidence"><span class="mini-chip ${badgeClass}">${confPct}%</span></td>
+                </tr>`;
+            }).join('') : '<tr class="empty-row"><td colspan="7"><div class="empty-state small">Upload and parse a statement to review transactions here.</div></td></tr>';
+            renderImportLearningRules();
+        }
+
+        function updatePendingImportField(event) {
+            const input = event.target.closest('[data-import-field]');
+            if (!input) return;
+            const row = input.closest('[data-import-index]');
+            if (!row) return;
+            const index = Number(row.dataset.importIndex);
+            const item = pendingStatementImport[index];
+            if (!item) return;
+            const field = input.dataset.importField;
+            let value = input.type === 'checkbox' ? input.checked : input.value;
+            if (field === 'amount') value = Math.max(0, Number(value) || 0);
+            item[field] = value;
+            if (field === 'category' && item.originalCategory !== value) item.userEdited = true;
+            if (field === 'type') {
+                if (value === 'income') item.source = item.source || item.description || 'Statement income';
+                else item.category = item.category || item.originalCategory || 'Other';
+                renderImportReview();
+            }
+        }
+
+        async function parseBankStatementPdf() {
+            const settings = getAiImportSettings();
+            const file = document.getElementById('statementPdfFile')?.files?.[0];
+            const consent = document.getElementById('aiImportConsentCheckbox')?.checked;
+            const budget = getActiveBudget();
+            if (!budget) return;
+            if (!settings.enabled) { setAiImportStatus('AI import is switched off. Enable it first in this tab.', 'error'); return; }
+            if (!consent) { setAiImportStatus('Please tick the privacy consent box before uploading a statement.', 'error'); return; }
+            if (!file) { setAiImportStatus('Choose a PDF bank statement first.', 'error'); return; }
+            if (file.type && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { setAiImportStatus('Please choose a PDF file.', 'error'); return; }
+            if (file.size > 3.5 * 1024 * 1024) { setAiImportStatus('This PDF is quite large. For Vercel Hobby, try a statement under about 3.5 MB or split/compress it first.', 'error'); return; }
+            saveAiImportSettings();
+            setAiImportStatus('Reading PDF and sending it to your Vercel import service...', 'saving');
+            try {
+                const dataBase64 = await readFileAsBase64(file);
+                const payload = {
+                    filename: file.name,
+                    mimeType: file.type || 'application/pdf',
+                    dataBase64,
+                    currency: 'GBP',
+                    categories: budget.categories || DEFAULT_CATEGORIES,
+                    learningRules: normaliseImportRules(budget.importRules || []),
+                    existingHints: [...(budget.wages || []), ...(budget.expenses || [])].slice(-80).map(item => ({ date: item.date, amount: item.amount, description: item.description || item.source || '', category: item.category || '' }))
+                };
+                const res = await fetch(endpointUrlFor(settings.endpoint), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `Import failed with HTTP ${res.status}`);
+                const transactions = Array.isArray(data.transactions) ? data.transactions : [];
+                pendingStatementImport = transactions.map((tx, index) => normaliseImportedTransaction(tx, index, budget)).filter(tx => tx.amount > 0);
+                renderImportReview();
+                setAiImportStatus(pendingStatementImport.length ? `Parsed ${pendingStatementImport.length} transaction${pendingStatementImport.length === 1 ? '' : 's'}. Review them below before importing.` : 'The AI response did not contain any usable transactions.', pendingStatementImport.length ? 'saved' : 'error');
+            } catch (error) {
+                console.error(error);
+                setAiImportStatus(`Import failed: ${error.message}`, 'error');
+            }
+        }
+
+        function rememberImportCorrection(budget, row) {
+            if (!budget || row.type !== 'expense' || !row.category) return;
+            const keyword = String(row.merchantKeyword || makeLearningKeyword(row.description)).trim();
+            if (!keyword || keyword.length < 3) return;
+            budget.importRules = normaliseImportRules(budget.importRules || []);
+            const existing = budget.importRules.find(rule => rule.keyword.toLowerCase() === keyword.toLowerCase());
+            if (existing) {
+                existing.category = row.category;
+                existing.uses = Number(existing.uses || 0) + 1;
+                existing.updatedAt = new Date().toISOString();
+            } else {
+                budget.importRules.unshift({ keyword, category: row.category, uses: 1, updatedAt: new Date().toISOString() });
+            }
+            budget.importRules = normaliseImportRules(budget.importRules).slice(0, 150);
+        }
+
+        function importSelectedStatementTransactions() {
+            const budget = getActiveBudget();
+            if (!budget) return;
+            const selected = (pendingStatementImport || []).filter(row => row.include && Number(row.amount || 0) > 0 && parseLocalDate(row.date));
+            if (!selected.length) { alert('No valid selected transactions to import.'); return; }
+            const duplicates = selected.filter(row => row.duplicate).length;
+            if (duplicates && !confirm(`${duplicates} selected transaction${duplicates === 1 ? ' is' : 's are'} marked as possible duplicate. Import anyway?`)) return;
+            let incomeCount = 0;
+            let expenseCount = 0;
+            selected.forEach(row => {
+                const amount = Math.abs(Number(row.amount || 0));
+                if (row.type === 'income') {
+                    budget.wages.push({ date: row.date, amount, source: String(row.source || row.description || 'Statement income').trim(), recurrence: 'none', recurring: false, reviewed: true });
+                    incomeCount++;
+                } else {
+                    const category = String(row.category || 'Other').trim() || 'Other';
+                    budget.categories = uniqueClean([...(budget.categories || []), category]);
+                    budget.expenses.push({ date: row.date, amount, category, description: String(row.description || '').trim(), recurrence: 'none', recurring: false, reviewed: true });
+                    rememberImportCorrection(budget, row);
+                    expenseCount++;
+                }
+            });
+            pendingStatementImport = [];
+            saveAndEncrypt();
+            renderAll();
+            renderImportReview();
+            setAiImportStatus(`Imported ${incomeCount} money-in and ${expenseCount} money-out transaction${incomeCount + expenseCount === 1 ? '' : 's'} into this vault.`, 'saved');
+        }
+
+        function clearImportLearning() {
+            const budget = getActiveBudget();
+            if (!budget) return;
+            if (!confirm('Clear all learned merchant/category rules for this budget?')) return;
+            budget.importRules = [];
+            saveAndEncrypt();
+            renderImportLearningRules();
+            setAiImportStatus('Import learning rules cleared for this budget.', 'saved');
+        }
+
+        function initAiImport() {
+            updateAiImportSettingsUI();
+            renderImportReview();
+            document.getElementById('saveAiImportSettingsBtn')?.addEventListener('click', saveAiImportSettings);
+            document.getElementById('testAiImportBtn')?.addEventListener('click', testAiImportConnection);
+            document.getElementById('parseStatementBtn')?.addEventListener('click', parseBankStatementPdf);
+            document.getElementById('importSelectedTransactionsBtn')?.addEventListener('click', importSelectedStatementTransactions);
+            document.getElementById('clearImportReviewBtn')?.addEventListener('click', () => { pendingStatementImport = []; renderImportReview(); setAiImportStatus('Statement review cleared.', ''); });
+            document.getElementById('clearImportLearningBtn')?.addEventListener('click', clearImportLearning);
+            document.getElementById('aiImportReviewTable')?.addEventListener('input', updatePendingImportField);
+            document.getElementById('aiImportReviewTable')?.addEventListener('change', updatePendingImportField);
+        }
+
         // ---------- Reminders & notifications ----------
         async function requestNotificationPermission() {
             if (!notificationsEnabled || !('Notification' in window)) return false;
@@ -1000,6 +1353,8 @@
             renderSmartInsights(budget);
             renderTables(budget);
             renderBudgetSelector();
+            renderImportLearningRules();
+            renderImportReview();
             showReminders(budget);
             updateCharts(budget);
             renderReportsLab(budget);
@@ -1977,7 +2332,7 @@ async function changePassword() {
                 return;
             }
             document.getElementById('changePasswordBtn').addEventListener('click', changePassword);
-            document.getElementById('securityJumpBtn')?.addEventListener('click', () => document.getElementById('security')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+            document.getElementById('securityJumpBtn')?.addEventListener('click', () => activateTab('security', { scroll: true, anchorId: 'security' }));
             document.getElementById('savePrivacySettings')?.addEventListener('click', async () => {
                 notificationsEnabled = Boolean(document.getElementById('enableNotificationsCheckbox')?.checked);
                 hideNotificationAmounts = Boolean(document.getElementById('hideNotificationAmountsCheckbox')?.checked);
@@ -2073,8 +2428,10 @@ async function changePassword() {
             document.getElementById('wageDate').valueAsDate = new Date();
             document.getElementById('expenseDate').valueAsDate = new Date();
             document.getElementById('periodStartInput').value = formatDateLocal(new Date());
+            initSectionTabs();
             initPWA();
             initScreenLock();
+            initAiImport();
             updatePinUI();
             updateStrengthMeter('changePasswordNew', 'changePasswordStrengthFill', 'changePasswordStrengthText', 'changePasswordStrengthWrap');
             showEncryptionPrompt();

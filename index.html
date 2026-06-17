@@ -10,20 +10,19 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="description" content="BudgetVault is a private, offline-first budget planner with encrypted local storage, flexible cycles, smart categories, and secure backups.">
+    <meta name="description" content="BudgetVault is a privacy-first budgeting app with strong local encryption, offline access, flexible pay cycles, and secure backups.">
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-    <title>BudgetVault</title>
+    <title>BudgetVault — Private budgeting that stays with you</title>
     <meta name="referrer" content="no-referrer">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://api.github.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'; worker-src 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://api.github.com https://*.vercel.app; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'; worker-src 'self'">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="dark">
     <!-- Encryption overlay -->
     <div id="encryptOverlay" class="modal-overlay hidden">
         <div class="modal auth-card">
-            <img src="assets/budgetvault-logo.png" class="auth-logo" alt="BudgetVault logo">
             <span class="eyebrow">🔒 Private by design</span>
             <h2 id="encryptTitle">Secure Your Data</h2>
             <p id="encryptMsg"></p>
@@ -62,9 +61,10 @@
         <header class="app-hero" id="overview">
             <div class="hero-top">
                 <div>
-                    <div class="hero-copy hero-brand-block">
-                        <img src="assets/budgetvault-logo.png" class="hero-logo" alt="BudgetVault logo">
-                        <p class="hero-subtitle">Private budgeting that stays with you. Encrypted budgets, flexible cycles, secure backups, and screen locking in a privacy-first app that works across mobile and desktop.</p>
+                    <span class="eyebrow">💠 BudgetVault</span>
+                    <div class="hero-copy">
+                        <h1>BudgetVault</h1>
+                        <p class="hero-subtitle">Private budgeting that stays with you. Track money with strong local encryption, flexible cycles, smart reports, and cleaner tabbed navigation on mobile, tablet, and desktop.</p>
                     </div>
                 </div>
                 <div class="top-actions" aria-label="App actions">
@@ -80,7 +80,7 @@
                 <span class="status-chip">🔐 Password on app restart</span>
                 <span class="status-chip" id="pinStatusChip">🛡️ PIN lock optional</span>
                 <span class="status-chip">📱 PWA ready</span>
-                <span class="status-chip" id="versionChip">🆕 v1.3.1</span>
+                <span class="status-chip" id="versionChip">🆕 v1.3.0</span>
             </div>
         </header>
 
@@ -110,12 +110,22 @@
             <div class="app-status" id="saveStatus" aria-live="polite"></div>
             <div class="status-rail-right">
                 <span class="offline-badge">Offline mode</span>
-                <span class="offline-badge soft-badge" id="publishedChip">Published 17 Jun 2026</span>
+                <span class="offline-badge soft-badge" id="publishedChip">Published 16 Jun 2026</span>
             </div>
         </div>
 
+        <nav class="section-tabs" aria-label="App sections" role="tablist">
+            <button type="button" class="section-tab is-active" data-tab-trigger="home" role="tab" aria-selected="true">🏠 Overview</button>
+            <button type="button" class="section-tab" data-tab-trigger="add" role="tab" aria-selected="false">➕ Add</button>
+            <button type="button" class="section-tab" data-tab-trigger="import" role="tab" aria-selected="false">🤖 AI Import</button>
+            <button type="button" class="section-tab" data-tab-trigger="plan" role="tab" aria-selected="false">🧭 Plan</button>
+            <button type="button" class="section-tab" data-tab-trigger="activity" role="tab" aria-selected="false">📋 Activity</button>
+            <button type="button" class="section-tab" data-tab-trigger="reports" role="tab" aria-selected="false">📊 Reports</button>
+            <button type="button" class="section-tab" data-tab-trigger="security" role="tab" aria-selected="false">🔐 Security</button>
+        </nav>
+
         <main class="main-grid">
-            <section class="panel tight wide" id="budgets">
+            <section class="panel tight wide" id="budgets" data-tab-panel="home">
                 <div class="budget-selector">
                     <div class="budget-label">
                         <label for="budgetSelect">Active budget</label>
@@ -130,7 +140,7 @@
                 </div>
             </section>
 
-            <section class="panel wide">
+            <section class="panel wide" data-tab-panel="home">
                 <div class="section-header">
                     <div>
                         <h2>Overview</h2>
@@ -140,7 +150,7 @@
                 <div class="dashboard" id="dashboard"></div>
             </section>
 
-            <section class="panel wide" id="smartInsights">
+            <section class="panel wide" id="smartInsights" data-tab-panel="home">
                 <div class="section-header">
                     <div>
                         <h2>Money check</h2>
@@ -150,7 +160,7 @@
                 <div class="dashboard insight-grid" id="insightCards"></div>
             </section>
 
-            <section class="panel wide" id="filters">
+            <section class="panel wide" id="filters" data-tab-panel="home">
                 <div class="section-header">
                     <div>
                         <h2>Find transactions</h2>
@@ -168,7 +178,7 @@
                 </div>
             </section>
 
-            <section id="yearlyReport" class="panel wide hidden">
+            <section id="yearlyReport" class="panel wide hidden" data-tab-panel="home">
                     <div class="yearly-toolbar">
                         <div>
                             <h2>Yearly Report</h2>
@@ -183,7 +193,7 @@
                     <div id="yearlySummary" class="dashboard" style="margin-top:1rem;"></div>
             </section>
 
-            <section class="panel" id="add">
+            <section class="panel" id="add" data-tab-panel="add">
                 <div class="section-header">
                     <div>
                         <h2>Add money</h2>
@@ -199,7 +209,7 @@
                 </form>
             </section>
 
-            <section class="panel">
+            <section class="panel" data-tab-panel="add">
                 <div class="section-header">
                     <div>
                         <h2>Add spending</h2>
@@ -216,7 +226,72 @@
                 </form>
             </section>
 
-            <section class="panel">
+
+            <section class="panel wide" id="aiImport" data-tab-panel="import">
+                <div class="section-header">
+                    <div>
+                        <h2>AI bank statement import</h2>
+                        <p>Upload a PDF statement, send it to your Vercel backend, and review the transactions before they enter your vault.</p>
+                    </div>
+                    <span class="pill">Beta • Off by default</span>
+                </div>
+                <div class="import-privacy-card">
+                    <h3>🔐 Privacy notice before you upload</h3>
+                    <p>This feature sends the selected PDF to your own Vercel Function, which then calls the OpenAI API using your server-side key. Manual entry and normal budgeting still stay local/offline. Only enable this if you are comfortable sending the statement to a third-party AI provider for parsing.</p>
+                    <ul class="guide-bullets compact-list">
+                        <li>The PDF is used to extract dates, descriptions, money in, money out, and suggested categories.</li>
+                        <li>Nothing is imported until you review and approve it.</li>
+                        <li>BudgetVault sends your local category rules next time so repeated merchants get categorised better.</li>
+                        <li>Your OpenAI key must stay in Vercel environment variables — never inside the browser app.</li>
+                    </ul>
+                </div>
+                <div class="form-inline goal-row import-settings-row">
+                    <label class="checkbox-row inline-check"><input type="checkbox" id="aiImportEnabledCheckbox"> Enable AI statement import on this device</label>
+                    <div class="input-group grow-field"><label for="aiImportEndpointInput">Vercel import endpoint</label><input type="url" id="aiImportEndpointInput" placeholder="/api/parse-statement or https://your-app.vercel.app/api/parse-statement"></div>
+                    <button id="saveAiImportSettingsBtn" type="button" class="secondary">Save import settings</button>
+                    <button id="testAiImportBtn" type="button" class="secondary">Test connection</button>
+                </div>
+                <div class="form-inline goal-row import-upload-row">
+                    <div class="input-group grow-field"><label for="statementPdfFile">Bank statement PDF</label><input type="file" id="statementPdfFile" accept="application/pdf,.pdf"></div>
+                    <label class="checkbox-row inline-check"><input type="checkbox" id="aiImportConsentCheckbox"> I understand this PDF will be sent to the configured AI import service</label>
+                    <button id="parseStatementBtn" type="button">🤖 Parse statement</button>
+                </div>
+                <p id="aiImportStatus" class="security-inline-note" aria-live="polite">Set your Vercel endpoint, enable the feature, then upload a PDF. Small PDFs work best.</p>
+            </section>
+
+            <section class="panel wide" id="aiImportReviewPanel" data-tab-panel="import">
+                <div class="section-header">
+                    <div>
+                        <h2>Review before import</h2>
+                        <p>Fix anything that looks wrong. BudgetVault learns merchant-to-category corrections for future uploads.</p>
+                    </div>
+                    <div class="install-actions">
+                        <button id="importSelectedTransactionsBtn" type="button">Add selected to vault</button>
+                        <button id="clearImportReviewBtn" type="button" class="secondary">Clear review</button>
+                    </div>
+                </div>
+                <div id="aiImportSummary" class="import-summary empty-state small">No parsed statement waiting for review.</div>
+                <div class="table-wrapper import-review-wrapper">
+                    <table id="aiImportReviewTable" class="import-review-table">
+                        <thead><tr><th>Use</th><th>Date</th><th>Type</th><th>Amount</th><th>Category / Source</th><th>Description</th><th>Confidence</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel wide" data-tab-panel="import">
+                <div class="section-header">
+                    <div>
+                        <h2>Import learning</h2>
+                        <p>When you correct categories, BudgetVault stores simple local rules inside your encrypted vault.</p>
+                    </div>
+                    <button id="clearImportLearningBtn" type="button" class="secondary">Clear learned rules</button>
+                </div>
+                <div id="importLearningRules" class="category-chips"></div>
+                <p class="security-inline-note">Learning rules are sent with future statement uploads so the AI has your preferred categories. They are basic merchant keywords, not full statement copies.</p>
+            </section>
+
+            <section class="panel" data-tab-panel="plan">
                 <div class="section-header">
                     <div>
                         <h2>Budget cycle</h2>
@@ -230,7 +305,7 @@
                 </div>
             </section>
 
-            <section class="panel">
+            <section class="panel" data-tab-panel="plan">
                 <div class="section-header">
                     <div>
                         <h2>Goals</h2>
@@ -246,7 +321,7 @@
 
             
 
-            <section class="panel">
+            <section class="panel" data-tab-panel="plan">
                 <div class="section-header">
                     <div>
                         <h2>Budget planner</h2>
@@ -261,7 +336,7 @@
                 <p class="security-inline-note">Rollover uses the previous cycle to add unused category limit, or reduce next cycle if you overspent.</p>
             </section>
 
-            <section class="panel">
+            <section class="panel" data-tab-panel="security">
                 <div class="section-header">
                     <div>
                         <h2>Screen lock</h2>
@@ -282,7 +357,7 @@
                 <p class="security-inline-note">The PIN only protects the currently open screen. It is never saved and is forgotten when the app closes.</p>
             </section>
 
-            <section class="panel">
+            <section class="panel" data-tab-panel="plan">
                 <div class="section-header">
                     <div>
                         <h2>Categories</h2>
@@ -302,7 +377,7 @@
                 <div id="categoryBudgetList" class="category-budget-list"></div>
             </section>
 
-            <section class="panel" id="reminderPanel">
+            <section class="panel" id="reminderPanel" data-tab-panel="add">
                 <div class="section-header">
                     <div>
                         <h2>Bills & subscriptions</h2>
@@ -312,7 +387,7 @@
                 <div class="reminders" id="reminderList">No reminders.</div>
             </section>
 
-            <section class="panel wide" id="history">
+            <section class="panel wide" id="history" data-tab-panel="activity">
                 <div class="section-header">
                     <div>
                         <h2>Wages</h2>
@@ -331,7 +406,7 @@
                 </div>
             </section>
 
-            <section class="panel wide" id="insights">
+            <section class="panel wide" id="insights" data-tab-panel="reports">
                 <div class="section-header">
                     <div>
                         <h2>Insights</h2>
@@ -346,7 +421,7 @@
                 </div>
             </section>
 
-            <section class="panel wide">
+            <section class="panel wide" data-tab-panel="activity">
                 <div class="section-header">
                     <div>
                         <h2>Expenses</h2>
@@ -370,7 +445,7 @@
 
             
 
-            <section class="panel wide" id="reportsLab">
+            <section class="panel wide" id="reportsLab" data-tab-panel="reports">
                 <div class="section-header">
                     <div>
                         <h2>Reports lab</h2>
@@ -396,7 +471,7 @@
                 </div>
             </section>
 
-            <section class="panel wide" id="guideHub">
+            <section class="panel wide" id="guideHub" data-tab-panel="reports">
                 <div class="section-header">
                     <div>
                         <h2>How to use</h2>
@@ -444,7 +519,7 @@
                 </div>
             </section>
 
-            <section class="panel wide security-panel" id="security">
+            <section class="panel wide security-panel" id="security" data-tab-panel="security">
                 <div class="section-header">
                     <div>
                         <h2>Security hub</h2>
@@ -517,10 +592,10 @@
                 </div>
             </section>
 
-            <section class="panel wide data-panel" id="settings">
+            <section class="panel wide data-panel" id="settings" data-tab-panel="security">
                 <div class="section-header">
                     <div>
-                        <h2>Backups &amp; data</h2>
+                        <h2>Backups & data</h2>
                         <p>Use encrypted backups for safety. Plain files are for compatibility, not privacy.</p>
                     </div>
                 </div>
@@ -576,11 +651,13 @@
         </main>
 
         <nav class="bottom-nav" aria-label="Mobile navigation">
-            <a href="#overview"><span>🏠</span>Home</a>
-            <a href="#add"><span>➕</span>Add</a>
-            <a href="#history"><span>📋</span>History</a>
-            <a href="#insights"><span>📊</span>Charts</a>
-            <a href="#settings"><span>⚙️</span>Data</a>
+            <button type="button" data-tab-trigger="home" class="is-active" aria-selected="true"><span>🏠</span>Overview</button>
+            <button type="button" data-tab-trigger="add" aria-selected="false"><span>➕</span>Add</button>
+            <button type="button" data-tab-trigger="import" aria-selected="false"><span>🤖</span>Import</button>
+            <button type="button" data-tab-trigger="plan" aria-selected="false"><span>🧭</span>Plan</button>
+            <button type="button" data-tab-trigger="activity" aria-selected="false"><span>📋</span>Activity</button>
+            <button type="button" data-tab-trigger="reports" aria-selected="false"><span>📊</span>Reports</button>
+            <button type="button" data-tab-trigger="security" aria-selected="false"><span>🔐</span>Security</button>
         </nav>
     </div>
 
@@ -669,6 +746,7 @@
                         <li>Use split expense when one purchase belongs to two categories.</li>
                         <li>Use reports to compare this cycle with the last one before making changes.</li>
                         <li>Export an encrypted backup before testing imports or clearing data.</li>
+                        <li>Use AI Import only after reading the privacy notice, then review every parsed transaction before importing.</li>
                     </ul>
                 </div>
                 <div>

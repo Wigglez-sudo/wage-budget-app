@@ -1,0 +1,13 @@
+{
+  "name": "budgetvault",
+  "version": "1.5.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --check app.js && node --check sw.js && node --check api/parse-statement.js && node --check api/health.js",
+    "dev": "vercel dev"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

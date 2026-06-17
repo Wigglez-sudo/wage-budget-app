@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'budget-tracker-pro-v7-polish';
+const CACHE_VERSION = 'budgetvault-v1.5.0';
 const APP_SHELL = [
   './',
   './index.html',
@@ -10,7 +10,10 @@ const APP_SHELL = [
   './icons/icon-maskable-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/apple-touch-icon.png',
+  './assets/budgetvault-logo.png',
+  './assets/budgetvault-mark.png',
+  './app-meta.json'
 ];
 
 self.addEventListener('install', event => {
