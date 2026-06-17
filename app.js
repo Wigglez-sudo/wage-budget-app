@@ -13,16 +13,14 @@
         const RECURRENCE_LABELS = { none: 'One-off', ...PERIOD_LABELS };
         const VALID_PERIODS = new Set(Object.keys(PERIOD_LABELS));
         const VALID_RECURRENCES = new Set(['none', ...Object.keys(PERIOD_LABELS)]);
-        const CURRENT_APP_VERSION = '1.5.0';
+        const CURRENT_APP_VERSION = '2.1.0';
         const TAB_KEYS = ['home', 'add', 'import', 'plan', 'activity', 'reports', 'security'];
-        const DEFAULT_APP_META = { version: CURRENT_APP_VERSION, publishedAt: '2026-06-16', notes: [
-            'Updated the app with the approved BudgetVault wordmark and logo across the app shell, auth screens, and install assets.',
-            'BudgetVault launch build with privacy-first branding, clearer security copy, and GitHub-ready publishing.',
-            'Rebranded the app as BudgetVault with stronger privacy-first copy across the experience.',
-            "What's new splash now highlights BudgetVault release notes after an update or first open.",
-            'Published version check now watches app-meta.json so GitHub Pages updates can surface cleanly.',
-            'Service worker update messaging tightened for mobile and desktop users.',
-            'AI bank-statement import can send PDFs through your Vercel backend to OpenAI, return strict JSON, and let users review every transaction before it enters the vault.'
+        const DEFAULT_APP_META = { version: CURRENT_APP_VERSION, publishedAt: '2026-06-17', notes: [
+            'Security hardening release. Your data, budgets and existing password all keep working.',
+            'Stronger password rules: guessable passwords like a word plus a year are now blocked. A 4-word passphrase is the easiest way to pass.',
+            'Encryption strengthened to 1,000,000 PBKDF2 iterations. Existing vaults still open and upgrade automatically the next time they are saved.',
+            'The optional AI-import server now enforces your allowed website and an optional secret key, so it cannot be used by others.',
+            'Full details of the security testing and fixes are in SECURITY.md.'
         ] };
 
 
@@ -50,6 +48,11 @@
         let remoteMeta = null;
         let activeTab = localStorage.getItem('activeAppTab') || 'home';
         let pendingStatementImport = [];
+        let pendingStatementImportMeta = null;
+        let importSort = { field: 'confidence', order: 'asc' };
+        let viewRangeMode = localStorage.getItem('viewRangeMode') || 'cycle';
+        let activityFilter = localStorage.getItem('activityFilter') || 'all';
+        let activityLimit = localStorage.getItem('activityLimit') || '50';
 
 
         function cloneData(data) {
@@ -63,24 +66,56 @@
 
         function evaluatePasswordStrength(password) {
             const value = String(password || '');
-            let score = 0;
             const lowered = value.toLowerCase();
-            if (value.length >= 12) score++;
-            if (value.length >= 16) score++;
-            if (/[a-z]/.test(value) && /[A-Z]/.test(value)) score++;
-            if (/\d/.test(value)) score++;
-            if (/[^A-Za-z0-9\s]/.test(value)) score++;
-            if (/\s/.test(value) && value.trim().split(/\s+/).length >= 4) score += 2;
-            if (/^(.)\1+$/.test(value) || /(1234|password|qwerty|letmein|budget|money|admin)/i.test(lowered)) score -= 2;
-            if (/(.)\1{3,}/.test(value)) score--;
-            score = Math.max(0, Math.min(5, score));
-            let label = 'Very weak';
-            let message = 'Use a longer password.';
-            if (score >= 4) { label = 'Strong'; message = 'Good choice. Long unique passwords are best.'; }
-            else if (score === 3) { label = 'Good'; message = 'Good, but a longer unique passphrase is safer.'; }
-            else if (score === 2) { label = 'Fair'; message = 'Add length and avoid common words or patterns.'; }
-            else if (score === 1) { label = 'Weak'; message = 'Too easy to guess if an attacker gets the encrypted file.'; }
-            return { score, label, message, valid: value.length >= 12 && score >= 3 };
+            const words = value.trim().split(/[\s\-_.]+/).filter(w => w.length >= 3);
+            const isPassphrase = words.length >= 4;
+
+            // Estimated entropy from the character pool used.
+            let pool = 0;
+            if (/[a-z]/.test(value)) pool += 26;
+            if (/[A-Z]/.test(value)) pool += 26;
+            if (/\d/.test(value)) pool += 10;
+            if (/[^A-Za-z0-9]/.test(value)) pool += 33;
+            let bits = value.length * Math.log2(Math.max(2, pool));
+
+            // Structural weaknesses that make offline guessing far cheaper than the
+            // raw character count suggests. These reduce the *effective* entropy.
+            const COMMON = /(password|passw0rd|qwerty|asdfgh|zxcvbn|letmein|welcome|iloveyou|admin|login|dragon|monkey|sunshine|princess|football|baseball|superman|batman|trustno|master|shadow|google|samsung|liverpool|arsenal|chelsea|whatever|starwars|hello|secret|summer|winter|spring|autumn|january|february)/i;
+            const wordPlusSuffix = /^[A-Za-z]+(?:[0-9][0-9!@#$%^&*._-]*|[!@#$%^&*._-]+)$/.test(value) && !isPassphrase;
+            const sequential = /(0123|1234|2345|3456|4567|5678|6789|9876|8765|4321|abcd|bcde|qwer|asdf)/i.test(value);
+
+            let penalty = 0;
+            if (COMMON.test(lowered)) penalty += 22;       // contains a very common word
+            if (wordPlusSuffix) penalty += 18;             // e.g. "Football2019", "Sunshine!"
+            if (sequential) penalty += 12;                 // keyboard / numeric runs
+            if (/^(.)\1+$/.test(value)) penalty += 40;     // all one character
+            if (/(.)\1{3,}/.test(value)) penalty += 10;    // long repeats
+            if (/^\d+$/.test(value)) penalty += 18;        // digits only
+
+            // A 4+ word passphrase is credited at ~12.9 bits/word (diceware-style).
+            if (isPassphrase) bits = Math.max(bits, words.length * 12.9);
+
+            const effective = Math.max(0, bits - penalty);
+
+            let score;
+            if (effective >= 90) score = 5;
+            else if (effective >= 75) score = 4;
+            else if (effective >= 60) score = 3;
+            else if (effective >= 40) score = 2;
+            else if (effective >= 25) score = 1;
+            else score = 0;
+
+            // Valid only when offline brute-force is infeasible: ~70+ effective bits
+            // and a sane minimum length. Passphrases of 4 random words clear this easily.
+            const valid = effective >= 70 && value.length >= 12;
+
+            let label, message;
+            if (score >= 5) { label = 'Strong'; message = 'Strong. Long unique passphrases are ideal.'; }
+            else if (score >= 4) { label = 'Good'; message = 'Good. A little longer or more random is even safer.'; }
+            else if (score >= 3) { label = 'Fair'; message = 'Borderline — prefer 4+ random words or 16+ random characters.'; }
+            else if (score >= 1) { label = 'Weak'; message = 'Easy to crack offline if your encrypted file is taken. Use 4+ random words.'; }
+            else { label = 'Very weak'; message = 'Far too guessable. Use 4+ random words or 16+ random characters.'; }
+            return { score, label, message, valid, bits: Math.round(effective) };
         }
 
         function updateStrengthMeter(inputId, fillId, textId, wrapId) {
@@ -93,7 +128,7 @@
             wrap.classList.remove('hidden');
             fill.style.width = `${Math.max(10, meta.score * 20)}%`;
             fill.style.background = meta.score >= 4 ? 'var(--green)' : meta.score >= 3 ? 'var(--primary)' : meta.score >= 2 ? 'var(--amber)' : 'var(--red)';
-            text.textContent = `${meta.label}: ${meta.message}`;
+            text.textContent = `${meta.label} · ~${meta.bits} bits: ${meta.message}`;
             text.classList.toggle('warning-copy', meta.score < 3);
             return meta;
         }
@@ -134,11 +169,11 @@
             const publishedChip = document.getElementById('publishedChip');
             const whatsNewTitle = document.getElementById('whatsNewTitle');
             const whatsNewIntro = document.getElementById('whatsNewIntro');
-            if (versionChip) versionChip.textContent = `🆕 v${version}`;
+            if (versionChip) versionChip.textContent = `v${version}`;
             if (currentVersionText) currentVersionText.textContent = `v${CURRENT_APP_VERSION}`;
             if (publishedChip) publishedChip.textContent = `Published ${published}`;
             if (whatsNewTitle) whatsNewTitle.textContent = `What's new in v${version}`;
-            if (whatsNewIntro) whatsNewIntro.textContent = `Published ${published}. You can reopen this from the top of the app any time.`;
+            if (whatsNewIntro) whatsNewIntro.textContent = `Published ${published}. You can reopen this any time from the top of the app.`;
             renderListInto('whatsNewList', appMeta.notes);
             renderListInto('changelogPreviewList', appMeta.notes);
         }
@@ -181,6 +216,16 @@
                 trigger.classList.toggle('is-active', isActive);
                 trigger.setAttribute('aria-selected', String(isActive));
             });
+            if (nextTab === 'reports' || nextTab === 'home' || nextTab === 'activity') {
+                requestAnimationFrame(() => {
+                    const budget = getActiveBudget?.();
+                    if (budget && !document.getElementById('appContent')?.classList.contains('hidden')) {
+                        if (nextTab === 'reports') { updateCharts(budget); renderReportsLab(budget); runCustomReport(false); }
+                        if (nextTab === 'activity') renderReviewQueue(budget);
+                        if (nextTab === 'home') { renderDashboard(budget); renderSmartInsights(budget); }
+                    }
+                });
+            }
             if (options.scroll) {
                 const anchor = options.anchorId ? document.getElementById(options.anchorId) : document.querySelector(`[data-tab-panel="${nextTab}"]`);
                 anchor?.scrollIntoView({ behavior: options.instant ? 'auto' : 'smooth', block: 'start' });
@@ -311,7 +356,10 @@
             document.getElementById('lockNowBtn')?.classList.toggle('hidden', !sessionPIN);
             document.getElementById('clearPinBtn')?.toggleAttribute('disabled', !sessionPIN);
             const chip = document.getElementById('pinStatusChip');
-            if (chip) chip.textContent = sessionPIN ? `🛡️ Auto-locks after ${lockTimeoutMinutes} min` : '🛡️ PIN lock optional';
+            if (chip) {
+                chip.textContent = sessionPIN ? `Locks after ${lockTimeoutMinutes} min` : 'Screen lock off';
+                chip.classList.toggle('chip-on', Boolean(sessionPIN));
+            }
             const bgToggle = document.getElementById('lockOnBackgroundCheckbox');
             if (bgToggle) bgToggle.checked = lockOnBackground;
             const notifyToggle = document.getElementById('enableNotificationsCheckbox');
@@ -401,6 +449,8 @@
         function lockToPassword() {
             clearSessionPIN(false);
             currentPassword = null;
+            currentKey = null;
+            currentSalt = null;
             document.getElementById('appContent')?.classList.add('hidden');
             showUnlockPrompt();
         }
@@ -476,7 +526,15 @@
             return out;
         }
 
-        function createDefaultBudget(name = 'Main', id = '1') {
+        
+        function normaliseDateRange(raw) {
+            const from = String(raw?.from || '').trim();
+            const to = String(raw?.to || '').trim();
+            if (!parseLocalDate(from) || !parseLocalDate(to)) return null;
+            return { from, to };
+        }
+
+function createDefaultBudget(name = 'Main', id = '1') {
             return {
                 id,
                 name,
@@ -484,12 +542,15 @@
                 expenses: [],
                 budgetGoal: 0,
                 savingsGoal: 0,
+                savingsBalance: 0,
                 periodType: 'monthly',
                 periodStart: formatDateLocal(new Date()),
                 categories: [...DEFAULT_CATEGORIES],
                 categoryBudgets: {},
                 rolloverEnabled: false,
-                importRules: []
+                importRules: [],
+                lastImportRange: null,
+                plannedIncome: 0
             };
         }
 
@@ -556,12 +617,15 @@
                 expenses,
                 budgetGoal: Number.isFinite(Number(raw?.budgetGoal)) && Number(raw.budgetGoal) >= 0 ? Number(raw.budgetGoal) : 0,
                 savingsGoal: Number.isFinite(Number(raw?.savingsGoal)) && Number(raw.savingsGoal) >= 0 ? Number(raw.savingsGoal) : 0,
+                savingsBalance: Number.isFinite(Number(raw?.savingsBalance ?? raw?.savingsTotal ?? raw?.startingSavings)) && Number(raw?.savingsBalance ?? raw?.savingsTotal ?? raw?.startingSavings) >= 0 ? Number(raw?.savingsBalance ?? raw?.savingsTotal ?? raw?.startingSavings) : 0,
                 periodType: VALID_PERIODS.has(raw?.periodType) ? raw.periodType : 'monthly',
                 periodStart: parseLocalDate(raw?.periodStart) ? raw.periodStart : formatDateLocal(new Date()),
                 categories: categories.length ? categories : [...DEFAULT_CATEGORIES],
                 categoryBudgets,
                 rolloverEnabled: Boolean(raw?.rolloverEnabled),
-                importRules: normaliseImportRules(raw?.importRules)
+                importRules: normaliseImportRules(raw?.importRules),
+                lastImportRange: normaliseDateRange(raw?.lastImportRange),
+                plannedIncome: Number.isFinite(Number(raw?.plannedIncome)) && Number(raw.plannedIncome) >= 0 ? Number(raw.plannedIncome) : 0
             };
         }
 
@@ -586,56 +650,149 @@
                 b.categoryBudgets && typeof b.categoryBudgets === 'object' && !Array.isArray(b.categoryBudgets) &&
                 Object.values(b.categoryBudgets).every(v => Number.isFinite(Number(v)) && Number(v) >= 0) &&
                 typeof b.rolloverEnabled === 'boolean' && Array.isArray(b.importRules || []) &&
+                (b.lastImportRange === null || (b.lastImportRange && parseLocalDate(b.lastImportRange.from) && parseLocalDate(b.lastImportRange.to))) &&
+                Number.isFinite(Number(b.plannedIncome || 0)) &&
 
                 Number.isFinite(b.budgetGoal) && b.budgetGoal >= 0 &&
                 Number.isFinite(b.savingsGoal) && b.savingsGoal >= 0 &&
+                Number.isFinite(Number(b.savingsBalance || 0)) && Number(b.savingsBalance || 0) >= 0 &&
                 VALID_PERIODS.has(b.periodType) && parseLocalDate(b.periodStart) &&
                 b.wages.every(w => parseLocalDate(w.date) && Number.isFinite(w.amount) && w.amount >= 0 && VALID_RECURRENCES.has(w.recurrence)) &&
                 b.expenses.every(e => parseLocalDate(e.date) && Number.isFinite(e.amount) && e.amount >= 0 && VALID_RECURRENCES.has(e.recurrence))
             );
         }
 
-        // ---------- Enhanced Encryption (600k PBKDF2 iterations) ----------
-        async function deriveKey(password, salt) {
-            const enc = new TextEncoder();
-            const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-            return crypto.subtle.deriveKey(
-                { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
-                keyMaterial,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
+        // ---------- Encryption ----------
+        // AES-256-GCM with a key derived from the password by PBKDF2-HMAC-SHA256.
+        // The derived key is CACHED for the session (currentKey/currentSalt) so routine
+        // autosaves never re-run PBKDF2 or touch the network — only unlocking, setting,
+        // or changing the password derives a key.
+        //
+        // Two modes (recorded in envelope.mode):
+        //   "offline" (default): key = PBKDF2(password, salt). Fully local; no network ever.
+        //   "online"           : key = HMAC(server secret pepper, PBKDF2(password, salt)),
+        //                         where the HMAC is computed by the user's own /api/pepper
+        //                         endpoint. An attacker holding only the local file cannot
+        //                         brute-force it, because the server secret is required for
+        //                         every single guess (turning an offline attack into a
+        //                         rate-limited online one).
+        const PBKDF2_ITERATIONS = 1000000;          // used when writing new data
+        const LEGACY_PBKDF2_ITERATIONS = 600000;    // assumed for envelopes with no `iterations`
+
+        let currentKey = null;    // cached AES-GCM CryptoKey for this session
+        let currentSalt = null;   // salt bound to currentKey
+        let currentIterations = PBKDF2_ITERATIONS; // PBKDF2 iterations bound to currentKey
+
+        function getEncryptionMode() { return localStorage.getItem('encryptionMode') === 'online' ? 'online' : 'offline'; }
+        function getPepperEndpoint() { return (localStorage.getItem('pepperEndpoint') || '/api/pepper').trim() || '/api/pepper'; }
+
+        function bytesToBase64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); }
+        function base64ToBytes(b64) { const s = atob(String(b64 || '')); const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+
+        async function pbkdf2Bits(password, salt, iterations) {
+            const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+            const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, keyMaterial, 256);
+            return new Uint8Array(bits);
         }
 
-        async function encryptData(data, password) {
-            const salt = crypto.getRandomValues(new Uint8Array(16));
+        // Online mode only: ask the user's own server to HMAC the PBKDF2 output with its secret pepper.
+        async function fetchServerKeyBytes(endpoint, hashBytes) {
+            let res;
+            try {
+                res = await fetch(endpointUrlFor(endpoint), {
+                    method: 'POST',
+                    headers: aiImportHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ hash: bytesToBase64(hashBytes) })
+                });
+            } catch (e) {
+                throw Object.assign(new Error('Could not reach the high-security key server. Check your connection and the endpoint.'), { code: 'SERVER' });
+            }
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw Object.assign(new Error(data.error || `Key server error (HTTP ${res.status}).`), { code: 'SERVER' });
+            }
+            const data = await res.json().catch(() => ({}));
+            const keyBytes = base64ToBytes(data.key);
+            if (keyBytes.length !== 32) throw Object.assign(new Error('The key server returned an invalid response.'), { code: 'SERVER' });
+            return keyBytes;
+        }
+
+        async function deriveAesKey(password, salt, iterations, mode, endpoint) {
+            let keyBytes = await pbkdf2Bits(password, salt, iterations);
+            if (mode === 'online') keyBytes = await fetchServerKeyBytes(endpoint || getPepperEndpoint(), keyBytes);
+            return crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+        }
+
+        // Build an encrypted envelope using an already-derived key (no PBKDF2, no network).
+        // `iterations` MUST be the count the key was actually derived with, so the envelope
+        // can be decrypted again later.
+        async function encryptWithKey(data, key, salt, mode, endpoint, iterations) {
             const iv = crypto.getRandomValues(new Uint8Array(12));
-            const key = await deriveKey(password, salt);
             const encoded = new TextEncoder().encode(JSON.stringify(data));
             const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
-            return { salt: Array.from(salt), iv: Array.from(iv), data: Array.from(new Uint8Array(encrypted)) };
+            const env = {
+                v: 3,
+                kdf: 'PBKDF2-SHA256',
+                mode,
+                iterations: Number(iterations) > 0 ? Number(iterations) : PBKDF2_ITERATIONS,
+                salt: Array.from(salt),
+                iv: Array.from(iv),
+                data: Array.from(new Uint8Array(encrypted))
+            };
+            if (mode === 'online') env.endpoint = endpoint || getPepperEndpoint();
+            return env;
         }
 
-        async function decryptData(encryptedObj, password) {
-            const salt = new Uint8Array(encryptedObj.salt);
-            const iv = new Uint8Array(encryptedObj.iv);
-            const data = new Uint8Array(encryptedObj.data);
-            const key = await deriveKey(password, salt);
-            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-            return JSON.parse(new TextDecoder().decode(decrypted));
+        // Decrypt an envelope with a password (used when unlocking). Throws on failure;
+        // network errors carry code 'SERVER' so the UI can distinguish them from a wrong password.
+        async function decryptEnvelope(envelope, password) {
+            const salt = new Uint8Array(envelope.salt);
+            const iv = new Uint8Array(envelope.iv);
+            const cipher = new Uint8Array(envelope.data);
+            const iterations = Number(envelope.iterations) > 0 ? Number(envelope.iterations) : LEGACY_PBKDF2_ITERATIONS;
+            const mode = envelope.mode === 'online' ? 'online' : 'offline';
+            const endpoint = envelope.endpoint || getPepperEndpoint();
+            const key = await deriveAesKey(password, salt, iterations, mode, endpoint);
+            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher);
+            return { data: JSON.parse(new TextDecoder().decode(plain)), key, salt, mode, endpoint, iterations };
         }
 
-        async function storeEncrypted(data, password) {
-            const enc = await encryptData(data, password);
-            localStorage.setItem('budgetAppEncrypted', JSON.stringify(enc));
+        // Create a fresh session key under the CURRENT mode (used at setup, password change, mode switch).
+        async function establishSessionKey(password) {
+            const mode = getEncryptionMode();
+            const endpoint = getPepperEndpoint();
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const key = await deriveAesKey(password, salt, PBKDF2_ITERATIONS, mode, endpoint);
+            currentPassword = password; currentKey = key; currentSalt = salt; currentIterations = PBKDF2_ITERATIONS;
+            return { key, salt, mode, endpoint };
         }
 
-        async function loadDecrypted(password) {
+        // Persist appData using the cached session key. No PBKDF2 and no network (key already derived).
+        async function storeEncrypted(data) {
+            if (!currentKey || !currentSalt) {
+                if (!currentPassword) throw new Error('No encryption key available for this session.');
+                await establishSessionKey(currentPassword);
+            }
+            const env = await encryptWithKey(data, currentKey, currentSalt, getEncryptionMode(), getPepperEndpoint(), currentIterations);
+            localStorage.setItem('budgetAppEncrypted', JSON.stringify(env));
+        }
+
+        // Try to unlock stored data with a password. Returns decrypted data, or throws
+        // (Error.code === 'SERVER' means the online key server was unreachable, not a wrong password).
+        async function unlockWithPassword(password) {
             const raw = localStorage.getItem('budgetAppEncrypted');
             if (!raw) return null;
-            try { return await decryptData(JSON.parse(raw), password); }
-            catch { return null; }
+            const envelope = JSON.parse(raw);
+            const result = await decryptEnvelope(envelope, password);
+            currentPassword = password; currentKey = result.key; currentSalt = result.salt; currentIterations = result.iterations;
+            localStorage.setItem('encryptionMode', result.mode);
+            if (result.mode === 'online' && envelope.endpoint) localStorage.setItem('pepperEndpoint', envelope.endpoint);
+            // Auto-upgrade vaults written with fewer iterations than we now use. Best-effort:
+            // if it fails (e.g. an online key server is briefly down) we keep the working key.
+            if (result.iterations < PBKDF2_ITERATIONS) {
+                try { await establishSessionKey(password); } catch (e) { /* keep the already-working key */ }
+            }
+            return result.data;
         }
 
         // ---------- Theme ----------
@@ -644,7 +801,7 @@
             document.body.classList.toggle('light', theme === 'light');
             document.body.classList.toggle('dark', theme !== 'light');
             const metaTheme = document.querySelector('meta[name="theme-color"]');
-            if (metaTheme) metaTheme.setAttribute('content', theme === 'light' ? '#f8fafc' : '#08111f');
+            if (metaTheme) metaTheme.setAttribute('content', theme === 'light' ? '#eef2f9' : '#080f1d');
         }
         document.getElementById('themeToggle').addEventListener('click', () => {
             const newTheme = document.body.classList.contains('light') ? 'dark' : 'light';
@@ -664,7 +821,7 @@
             setSaveStatus('Saving encrypted data…');
             saveQueue = saveQueue
                 .catch(() => {})
-                .then(() => storeEncrypted(snapshot, currentPassword))
+                .then(() => storeEncrypted(snapshot))
                 .then(() => setSaveStatus('Saved.'))
                 .catch(err => {
                     console.error('Save failed', err);
@@ -691,14 +848,42 @@
             return { type, start, end };
         }
 
+        function getAllDataRange(budget) {
+            const dates = [...(budget?.wages || []), ...(budget?.expenses || [])]
+                .map(item => parseLocalDate(item.date))
+                .filter(Boolean)
+                .sort((a, b) => a - b);
+            if (!dates.length) {
+                const period = getCurrentPeriod(budget);
+                return { ...period, mode: 'cycle', label: `${PERIOD_LABELS[period.type]} cycle: ${formatPeriodLabel(period)}` };
+            }
+            return { type: 'all', mode: 'all', start: dates[0], end: addDays(dates[dates.length - 1], 1), label: `All data: ${formatShortDate(dates[0])}–${formatShortDate(dates[dates.length - 1])}` };
+        }
+
+        function getLastStatementRange(budget) {
+            const saved = normaliseDateRange(budget?.lastImportRange);
+            if (!saved) return null;
+            const start = parseLocalDate(saved.from);
+            const end = addDays(parseLocalDate(saved.to), 1);
+            if (!start || !end || start > end) return null;
+            return { type: 'statement', mode: 'statement', start, end, label: `Last statement: ${formatShortDate(start)}–${formatShortDate(addDays(end, -1))}` };
+        }
+
         function getActiveViewRange(budget) {
             if (currentFilterMonth) {
                 const [y, m] = currentFilterMonth.split('-').map(Number);
                 const start = new Date(y, m - 1, 1);
-                return { type: 'month', start, end: new Date(y, m, 1), label: start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) };
+                return { type: 'month', mode: 'month', start, end: new Date(y, m, 1), label: start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) };
+            }
+            const selectedMode = ['cycle','statement','all'].includes(viewRangeMode) ? viewRangeMode : 'cycle';
+            if (selectedMode === 'all') return getAllDataRange(budget);
+            if (selectedMode === 'statement') {
+                const statementRange = getLastStatementRange(budget);
+                if (statementRange) return statementRange;
+                return getAllDataRange(budget);
             }
             const period = getCurrentPeriod(budget);
-            return { ...period, label: `${PERIOD_LABELS[period.type]} cycle: ${formatPeriodLabel(period)}` };
+            return { ...period, mode: 'cycle', label: `${PERIOD_LABELS[period.type]} cycle: ${formatPeriodLabel(period)}` };
         }
 
         function itemInRange(item, range) {
@@ -728,6 +913,26 @@
             const wages = filterAndSearch(budget.wages, ['date','source','amount','recurrence'], budget, true);
             const expenses = filterAndSearch(budget.expenses, ['date','category','description','amount','recurrence'], budget, true);
             return { range, wages, expenses };
+        }
+
+        function isSavingsCategory(category) {
+            return String(category || '').trim().toLowerCase() === 'savings';
+        }
+
+        function getSavingsContributions(expenses) {
+            return (expenses || [])
+                .filter(item => isSavingsCategory(item.category))
+                .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        }
+
+        function getSpendingExpenses(expenses) {
+            return (expenses || []).filter(item => !isSavingsCategory(item.category));
+        }
+
+        function getSavingsTotal(budget, expensesOverride = null) {
+            const base = Number(budget?.savingsBalance || 0);
+            const contributions = getSavingsContributions(expensesOverride || budget?.expenses || []);
+            return base + contributions;
         }
 
         function getCategoryTotals(expenses) {
@@ -766,6 +971,19 @@
             );
         }
 
+        function hasMatchingIncomeOnDate(budget, item, dateStr) {
+            return (budget.wages || []).some(w =>
+                w !== item &&
+                w.date === dateStr &&
+                String(w.source || '') === String(item.source || '') &&
+                Math.abs(Number(w.amount || 0) - Number(item.amount || 0)) < 0.01
+            );
+        }
+
+        function hasMatchingRecurringCopy(budget, item, type, dateStr) {
+            return type === 'Income' ? hasMatchingIncomeOnDate(budget, item, dateStr) : hasMatchingExpenseOnDate(budget, item, dateStr);
+        }
+
         function getFutureRecurringOutflowForRange(budget, range) {
             const now = new Date();
             const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -782,10 +1000,17 @@
             const totals = getCategoryTotals(expenses);
             const limits = budget.categoryBudgets || {};
             return budget.categories.map(cat => {
+                if (isSavingsCategory(cat)) {
+                    const savedInView = getSavingsContributions(expenses);
+                    const savedTotal = getSavingsTotal(budget);
+                    const limit = Number(budget.savingsGoal || 0);
+                    const pctRaw = limit > 0 ? (savedTotal / limit) * 100 : 0;
+                    return { category: cat, spent: savedTotal, savedTotal, savedInView, limit, pctRaw, over: false, isSavings: true };
+                }
                 const spent = totals[cat] || 0;
                 const limit = budget?.rolloverEnabled ? getAdjustedCategoryLimit(budget, cat) : Number(limits[cat] || 0);
                 const pctRaw = limit > 0 ? (spent / limit) * 100 : 0;
-                return { category: cat, spent, limit, pctRaw, over: limit > 0 && spent > limit };
+                return { category: cat, spent, limit, pctRaw, over: limit > 0 && spent > limit, isSavings: false };
             });
         }
 
@@ -808,6 +1033,11 @@
             document.getElementById('periodStartInput').value = budget?.periodStart || formatDateLocal(new Date());
             document.getElementById('budgetGoalInput').value = budget?.budgetGoal ? String(budget.budgetGoal) : '';
             document.getElementById('savingsGoalInput').value = budget?.savingsGoal ? String(budget.savingsGoal) : '';
+            const savingsBalanceInput = document.getElementById('savingsBalanceInput'); if (savingsBalanceInput) savingsBalanceInput.value = budget?.savingsBalance ? String(budget.savingsBalance) : '';
+            const plannedIncomeInput = document.getElementById('plannedIncomeInput'); if (plannedIncomeInput) plannedIncomeInput.value = budget?.plannedIncome ? String(budget.plannedIncome) : '';
+            const viewSelect = document.getElementById('viewRangeSelect'); if (viewSelect) viewSelect.value = viewRangeMode;
+            const activityFilterSelect = document.getElementById('activityFilterSelect'); if (activityFilterSelect) activityFilterSelect.value = activityFilter;
+            const activityLimitSelect = document.getElementById('activityLimitSelect'); if (activityLimitSelect) activityLimitSelect.value = activityLimit;
             const rolloverBox = document.getElementById('rolloverEnabledCheckbox'); if (rolloverBox) rolloverBox.checked = Boolean(budget?.rolloverEnabled);
             const onboardName = document.getElementById('onboardingBudgetName'); if (onboardName) onboardName.value = budget?.name || '';
             renderCategories(budget);
@@ -852,8 +1082,12 @@
             if (!budget) return;
             const limit = parseFloat(document.getElementById('budgetGoalInput').value);
             const savings = parseFloat(document.getElementById('savingsGoalInput').value);
+            const plannedIncome = parseFloat(document.getElementById('plannedIncomeInput')?.value || '0');
+            const savingsBalance = parseFloat(document.getElementById('savingsBalanceInput')?.value || '0');
             budget.budgetGoal = !isNaN(limit) && limit >= 0 ? limit : 0;
             budget.savingsGoal = !isNaN(savings) && savings >= 0 ? savings : 0;
+            budget.savingsBalance = !isNaN(savingsBalance) && savingsBalance >= 0 ? savingsBalance : 0;
+            budget.plannedIncome = !isNaN(plannedIncome) && plannedIncome >= 0 ? plannedIncome : 0;
             saveAndEncrypt();
             renderAll();
         });
@@ -920,19 +1154,23 @@
             const { expenses } = getCycleItems(budget);
             const totals = getCategoryTotals(expenses);
             list.innerHTML = budget.categories.map(cat => {
-                const spent = totals[cat] || 0;
-                const limit = getAdjustedCategoryLimit(budget, cat);
-                const pctRaw = limit > 0 ? (spent / limit) * 100 : 0;
+                const isSavings = isSavingsCategory(cat);
+                const spent = isSavings ? getSavingsContributions(expenses) : (totals[cat] || 0);
+                const limit = isSavings ? Number(budget.savingsGoal || 0) : getAdjustedCategoryLimit(budget, cat);
+                const totalForProgress = isSavings ? getSavingsTotal(budget) : spent;
+                const pctRaw = limit > 0 ? (totalForProgress / limit) * 100 : 0;
                 const pct = Math.min(100, pctRaw);
-                const status = limit > 0 ? (spent > limit ? `£${(spent - limit).toFixed(2)} over` : `£${Math.max(0, limit - spent).toFixed(2)} left`) : 'No limit';
-                return `<div class="category-limit-item">
+                const status = isSavings
+                    ? (limit > 0 ? `£${Math.max(0, limit - getSavingsTotal(budget)).toFixed(2)} left to target` : 'No savings target')
+                    : (limit > 0 ? (spent > limit ? `£${(spent - limit).toFixed(2)} over` : `£${Math.max(0, limit - spent).toFixed(2)} left`) : 'No limit');
+                return `<div class="category-limit-item ${isSavings ? 'savings-limit-item' : ''}">
                     <div class="category-limit-top"><strong>${escapeHTML(cat)}</strong><span class="${spent > limit && limit > 0 ? 'danger-text' : 'muted'}">${escapeHTML(status)}</span></div>
                     <div class="category-limit-grid">
                         <div>
-                            <div class="progress-meta"><span>Spent £${spent.toFixed(2)}</span><span>${limit > 0 ? `${pctRaw.toFixed(0)}%` : ''}</span></div>
-                            <div class="progress-bar"><div class="progress-fill ${spent > limit && limit > 0 ? 'over' : ''}" style="width:${pct}%"></div></div>
+                            <div class="progress-meta"><span>${isSavings ? `Saved £${getSavingsTotal(budget).toFixed(2)} total • £${spent.toFixed(2)} in this view` : `Spent £${spent.toFixed(2)}`}</span><span>${limit > 0 ? `${pctRaw.toFixed(0)}%` : ''}</span></div>
+                            <div class="progress-bar"><div class="progress-fill ${!isSavings && spent > limit && limit > 0 ? 'over' : ''}" style="width:${pct}%"></div></div>
                         </div>
-                        <input type="number" min="0" step="0.01" inputmode="decimal" aria-label="${escapeHTML(cat)} limit" value="${limit || ''}" data-category-limit="${escapeHTML(cat)}" placeholder="Limit">
+                        <input type="number" min="0" step="0.01" inputmode="decimal" aria-label="${escapeHTML(cat)} ${isSavings ? 'target' : 'limit'}" value="${limit || ''}" data-category-limit="${escapeHTML(cat)}" placeholder="${isSavings ? 'Savings target' : 'Limit'}">
                     </div>
                 </div>`;
             }).join('');
@@ -940,7 +1178,9 @@
                 input.addEventListener('change', () => {
                     const cat = input.getAttribute('data-category-limit');
                     const value = Number(input.value);
-                    if (!Number.isFinite(value) || value <= 0) delete budget.categoryBudgets[cat];
+                    if (isSavingsCategory(cat)) {
+                        budget.savingsGoal = Number.isFinite(value) && value > 0 ? value : 0;
+                    } else if (!Number.isFinite(value) || value <= 0) delete budget.categoryBudgets[cat];
                     else budget.categoryBudgets[cat] = value;
                     saveAndEncrypt();
                     renderAll();
@@ -977,6 +1217,14 @@
             };
         }
 
+        // Optional shared secret for locked-down self-hosted endpoints. If the user has
+        // set one (localStorage 'aiImportSecret', matching IMPORT_SHARED_SECRET on the
+        // server), it is sent as a header so the server can reject everyone else.
+        function aiImportHeaders(base = {}) {
+            const secret = localStorage.getItem('aiImportSecret');
+            return secret ? { ...base, 'x-budgetvault-key': secret } : { ...base };
+        }
+
         function setAiImportStatus(message, state = '') {
             const el = document.getElementById('aiImportStatus');
             if (!el) return;
@@ -988,16 +1236,68 @@
             const settings = getAiImportSettings();
             const enabled = document.getElementById('aiImportEnabledCheckbox');
             const endpoint = document.getElementById('aiImportEndpointInput');
+            const secret = document.getElementById('aiImportSecretInput');
             if (enabled) enabled.checked = settings.enabled;
             if (endpoint) endpoint.value = settings.endpoint;
+            if (secret) secret.value = localStorage.getItem('aiImportSecret') || '';
         }
 
         function saveAiImportSettings() {
             const enabled = document.getElementById('aiImportEnabledCheckbox')?.checked ? '1' : '0';
             const endpoint = (document.getElementById('aiImportEndpointInput')?.value || '/api/parse-statement').trim() || '/api/parse-statement';
+            const secret = (document.getElementById('aiImportSecretInput')?.value || '').trim();
             localStorage.setItem('aiImportEnabled', enabled);
             localStorage.setItem('aiImportEndpoint', endpoint);
+            if (secret) localStorage.setItem('aiImportSecret', secret); else localStorage.removeItem('aiImportSecret');
             setAiImportStatus(enabled === '1' ? 'AI import is enabled on this device. Upload a PDF when ready.' : 'AI import is off. Turn it on before uploading statements.', enabled === '1' ? 'saved' : '');
+        }
+
+        function updateSecurityModeUI() {
+            const mode = getEncryptionMode();
+            const toggle = document.getElementById('onlineModeToggle');
+            const endpoint = document.getElementById('pepperEndpointInput');
+            const status = document.getElementById('onlineModeStatus');
+            if (toggle) toggle.checked = mode === 'online';
+            if (endpoint) endpoint.value = getPepperEndpoint();
+            if (status) {
+                status.textContent = mode === 'online'
+                    ? 'ON — unlocking this vault needs your key server. Offline brute-force of the local file is impossible.'
+                    : 'OFF — offline mode (default). Everything stays on this device; security depends on your password.';
+                status.dataset.state = mode === 'online' ? 'saved' : '';
+            }
+        }
+
+        // Switch between offline and online (server-pepper) encryption, re-encrypting all data.
+        async function applyEncryptionMode() {
+            if (!currentPassword) { alert('Unlock the app before changing the encryption mode.'); return; }
+            const wantOnline = !!document.getElementById('onlineModeToggle')?.checked;
+            const endpoint = (document.getElementById('pepperEndpointInput')?.value || '/api/pepper').trim() || '/api/pepper';
+            localStorage.setItem('pepperEndpoint', endpoint);
+            const targetMode = wantOnline ? 'online' : 'offline';
+            const currentMode = getEncryptionMode();
+            if (targetMode === currentMode) { updateSecurityModeUI(); setSaveStatus('Encryption mode unchanged.'); return; }
+            if (targetMode === 'online') {
+                const ok = confirm('Turn ON online high-security mode?\n\n• Unlocking your vault will require reaching your key server each time (after unlocking, edits still work offline).\n• If the server secret (KDF_PEPPER) is lost or changed, your data CANNOT be recovered.\n• Export a plain backup and store it safely before continuing.\n\nContinue?');
+                if (!ok) { updateSecurityModeUI(); return; }
+            }
+            setSaveStatus(`Re-encrypting in ${targetMode} mode…`);
+            try {
+                localStorage.setItem('encryptionMode', targetMode);
+                await establishSessionKey(currentPassword);   // online => contacts your key server
+                await storeEncrypted(normaliseData(appData));
+            } catch (err) {
+                localStorage.setItem('encryptionMode', currentMode); // revert; cached key is unchanged on failure
+                updateSecurityModeUI();
+                alert(err && err.code === 'SERVER'
+                    ? `Could not switch to online mode: ${err.message}`
+                    : `Encryption mode switch failed: ${err.message || ''}`);
+                return;
+            }
+            updateSecurityModeUI();
+            setSaveStatus('Encryption mode updated.');
+            alert(targetMode === 'online'
+                ? 'Online high-security mode is ON. Your data was re-encrypted so the local file cannot be brute-forced without your server.'
+                : 'Switched to offline mode. Your data was re-encrypted for local-only use.');
         }
 
         function endpointUrlFor(path) {
@@ -1011,7 +1311,7 @@
             const endpoint = endpointUrlFor(getAiImportSettings().endpoint).replace(/\/parse-statement\/?$/, '/health');
             setAiImportStatus('Testing Vercel import service...', 'saving');
             try {
-                const res = await fetch(endpoint, { cache: 'no-store' });
+                const res = await fetch(endpoint, { cache: 'no-store', headers: aiImportHeaders() });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
                 setAiImportStatus(data.openaiConfigured ? 'Connection OK. OpenAI key is configured on Vercel.' : 'Connection OK, but OPENAI_API_KEY is not configured on Vercel yet.', data.openaiConfigured ? 'saved' : 'error');
@@ -1117,21 +1417,30 @@
             if (!tbody || !summary) return;
             const rows = pendingStatementImport || [];
             const selectedCount = rows.filter(r => r.include).length;
-            const lowConfidence = rows.filter(r => r.needsReview).length;
+            const lowConfidence = rows.filter(r => r.needsReview || Number(r.confidence || 0) < 0.75).length;
             const duplicates = rows.filter(r => r.duplicate).length;
+            const statementPeriod = pendingStatementImportMeta?.statementPeriod;
+            const periodText = statementPeriod?.from && statementPeriod?.to ? ` • Statement ${statementPeriod.from} to ${statementPeriod.to}` : '';
             summary.classList.toggle('empty-state', !rows.length);
-            summary.textContent = rows.length ? `${rows.length} transaction${rows.length === 1 ? '' : 's'} found • ${selectedCount} selected • ${lowConfidence} need review • ${duplicates} possible duplicate${duplicates === 1 ? '' : 's'}` : 'No parsed statement waiting for review.';
-            tbody.innerHTML = rows.length ? rows.map((row, index) => {
+            summary.textContent = rows.length ? `${rows.length} transaction${rows.length === 1 ? '' : 's'} found • ${selectedCount} selected • ${lowConfidence} need review • ${duplicates} possible duplicate${duplicates === 1 ? '' : 's'}${periodText}` : 'No parsed statement waiting for review.';
+            let renderRows = rows.map((row, index) => ({ row, index }));
+            if (importSort.field === 'confidence') {
+                renderRows.sort((a, b) => ((Number(a.row.confidence || 0) - Number(b.row.confidence || 0)) * (importSort.order === 'asc' ? 1 : -1)) || a.row.date.localeCompare(b.row.date));
+            } else if (importSort.field === 'date') {
+                renderRows.sort((a, b) => a.row.date.localeCompare(b.row.date) * (importSort.order === 'asc' ? 1 : -1));
+            }
+            tbody.innerHTML = renderRows.length ? renderRows.map(({ row, index }) => {
                 const confPct = Math.round(Number(row.confidence || 0) * 100);
-                const badgeClass = row.duplicate || row.needsReview ? 'needs-review-chip' : 'reviewed-chip';
+                const badgeClass = row.duplicate || row.needsReview || confPct < 75 ? 'needs-review-chip' : 'reviewed-chip';
+                const reviewHint = row.duplicate ? 'Possible duplicate. Check before importing. ' : row.needsReview || confPct < 75 ? 'Low confidence. Please check. ' : '';
                 return `<tr data-import-index="${index}" class="${row.duplicate ? 'import-duplicate-row' : ''}">
                     <td data-label="Use"><input type="checkbox" data-import-field="include" ${row.include ? 'checked' : ''}></td>
                     <td data-label="Date"><input type="date" data-import-field="date" value="${escapeHTML(row.date)}"></td>
                     <td data-label="Type"><select data-import-field="type"><option value="expense" ${row.type === 'expense' ? 'selected' : ''}>Money out</option><option value="income" ${row.type === 'income' ? 'selected' : ''}>Money in</option></select></td>
                     <td data-label="Amount"><input type="number" min="0.01" step="0.01" inputmode="decimal" data-import-field="amount" value="${Number(row.amount || 0).toFixed(2)}"></td>
-                    <td data-label="Category / Source">${row.type === 'income' ? `<input type="text" data-import-field="source" value="${escapeHTML(row.source || 'Statement income')}">` : `<select data-import-field="category">${categoryOptionsForImport(row.category || 'Other')}</select>`}</td>
-                    <td data-label="Description"><input type="text" data-import-field="description" value="${escapeHTML(row.description || '')}"><small>${row.duplicate ? 'Possible duplicate. ' : ''}${row.learnedCategory ? 'Learned category applied. ' : ''}${row.notes ? escapeHTML(row.notes) : ''}</small></td>
-                    <td data-label="Confidence"><span class="mini-chip ${badgeClass}">${confPct}%</span></td>
+                    <td data-label="Category / Source">${row.type === 'income' ? `<input type="text" data-import-field="source" value="${escapeHTML(row.source || 'Statement income')}" placeholder="Income source">` : `<select data-import-field="category">${categoryOptionsForImport(row.category || 'Other')}</select>`}</td>
+                    <td data-label="Description"><input type="text" data-import-field="description" value="${escapeHTML(row.description || '')}"><small>${reviewHint}${row.learnedCategory ? 'Learned category applied. ' : ''}${row.notes ? escapeHTML(row.notes) : ''}</small></td>
+                    <td data-label="Confidence"><button type="button" class="mini-chip ${badgeClass}" data-action="sort-import-confidence" title="Click to sort by confidence">${confPct}%</button></td>
                 </tr>`;
             }).join('') : '<tr class="empty-row"><td colspan="7"><div class="empty-state small">Upload and parse a statement to review transactions here.</div></td></tr>';
             renderImportLearningRules();
@@ -1149,7 +1458,8 @@
             let value = input.type === 'checkbox' ? input.checked : input.value;
             if (field === 'amount') value = Math.max(0, Number(value) || 0);
             item[field] = value;
-            if (field === 'category' && item.originalCategory !== value) item.userEdited = true;
+            if (field === 'category' && item.originalCategory !== value) { item.userEdited = true; item.needsReview = false; }
+            if (field === 'source' || field === 'description' || field === 'date' || field === 'amount') item.userEdited = true;
             if (field === 'type') {
                 if (value === 'income') item.source = item.source || item.description || 'Statement income';
                 else item.category = item.category || item.originalCategory || 'Other';
@@ -1183,12 +1493,13 @@
                 };
                 const res = await fetch(endpointUrlFor(settings.endpoint), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: aiImportHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify(payload)
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || `Import failed with HTTP ${res.status}`);
                 const transactions = Array.isArray(data.transactions) ? data.transactions : [];
+                pendingStatementImportMeta = { statementPeriod: data.statementPeriod || null, institution: data.institution || '', warnings: Array.isArray(data.warnings) ? data.warnings : [] };
                 pendingStatementImport = transactions.map((tx, index) => normaliseImportedTransaction(tx, index, budget)).filter(tx => tx.amount > 0);
                 renderImportReview();
                 setAiImportStatus(pendingStatementImport.length ? `Parsed ${pendingStatementImport.length} transaction${pendingStatementImport.length === 1 ? '' : 's'}. Review them below before importing.` : 'The AI response did not contain any usable transactions.', pendingStatementImport.length ? 'saved' : 'error');
@@ -1214,7 +1525,42 @@
             budget.importRules = normaliseImportRules(budget.importRules).slice(0, 150);
         }
 
-        function importSelectedStatementTransactions() {
+        
+        function setLastImportRangeFromRows(budget, rows) {
+            const dates = (rows || []).map(row => parseLocalDate(row.date)).filter(Boolean).sort((a, b) => a - b);
+            let from = pendingStatementImportMeta?.statementPeriod?.from;
+            let to = pendingStatementImportMeta?.statementPeriod?.to;
+            if (!parseLocalDate(from) || !parseLocalDate(to)) {
+                from = dates[0] ? formatDateLocal(dates[0]) : null;
+                to = dates.length ? formatDateLocal(dates[dates.length - 1]) : null;
+            }
+            if (parseLocalDate(from) && parseLocalDate(to)) budget.lastImportRange = { from, to };
+        }
+
+        function applyImportBulkType(type) {
+            if (!['income','expense'].includes(type)) return;
+            (pendingStatementImport || []).forEach(item => {
+                if (!item.include) return;
+                item.type = type;
+                if (type === 'income') item.source = item.source || item.description || 'Statement income';
+                else item.category = item.category || item.originalCategory || 'Other';
+                item.needsReview = true;
+                item.userEdited = true;
+            });
+            renderImportReview();
+        }
+
+        function selectImportRows(mode) {
+            (pendingStatementImport || []).forEach(item => {
+                if (mode === 'all') item.include = true;
+                else if (mode === 'none') item.include = false;
+                else if (mode === 'low') item.include = item.needsReview || item.confidence < 0.75 || item.duplicate;
+                else if (mode === 'safe') item.include = !item.duplicate && !item.needsReview && item.confidence >= 0.75;
+            });
+            renderImportReview();
+        }
+
+function importSelectedStatementTransactions() {
             const budget = getActiveBudget();
             if (!budget) return;
             const selected = (pendingStatementImport || []).filter(row => row.include && Number(row.amount || 0) > 0 && parseLocalDate(row.date));
@@ -1236,11 +1582,18 @@
                     expenseCount++;
                 }
             });
+            setLastImportRangeFromRows(budget, selected);
             pendingStatementImport = [];
+            pendingStatementImportMeta = null;
+            viewRangeMode = budget.lastImportRange ? 'statement' : 'all';
+            localStorage.setItem('viewRangeMode', viewRangeMode);
+            currentFilterMonth = null;
+            const fm = document.getElementById('filterMonth'); if (fm) fm.value = '';
             saveAndEncrypt();
             renderAll();
             renderImportReview();
-            setAiImportStatus(`Imported ${incomeCount} money-in and ${expenseCount} money-out transaction${incomeCount + expenseCount === 1 ? '' : 's'} into this vault.`, 'saved');
+            activateTab('home', { scroll: true, anchorId: 'dashboard' });
+            setAiImportStatus(`Imported ${incomeCount} money-in and ${expenseCount} money-out transaction${incomeCount + expenseCount === 1 ? '' : 's'} into this vault. Overview is now showing the imported statement range.`, 'saved');
         }
 
         function clearImportLearning() {
@@ -1255,6 +1608,8 @@
 
         function initAiImport() {
             updateAiImportSettingsUI();
+            updateSecurityModeUI();
+            document.getElementById('applyOnlineModeBtn')?.addEventListener('click', applyEncryptionMode);
             renderImportReview();
             document.getElementById('saveAiImportSettingsBtn')?.addEventListener('click', saveAiImportSettings);
             document.getElementById('testAiImportBtn')?.addEventListener('click', testAiImportConnection);
@@ -1264,6 +1619,17 @@
             document.getElementById('clearImportLearningBtn')?.addEventListener('click', clearImportLearning);
             document.getElementById('aiImportReviewTable')?.addEventListener('input', updatePendingImportField);
             document.getElementById('aiImportReviewTable')?.addEventListener('change', updatePendingImportField);
+            document.getElementById('aiImportReviewTable')?.addEventListener('click', event => {
+                if (!event.target.closest('[data-action="sort-import-confidence"]')) return;
+                importSort.field = 'confidence';
+                importSort.order = importSort.order === 'asc' ? 'desc' : 'asc';
+                renderImportReview();
+            });
+            document.getElementById('sortImportConfidenceBtn')?.addEventListener('click', () => { importSort = { field: 'confidence', order: 'asc' }; renderImportReview(); });
+            document.getElementById('applyImportTypeBtn')?.addEventListener('click', () => applyImportBulkType(document.getElementById('bulkImportTypeSelect')?.value));
+            document.getElementById('selectLowConfidenceBtn')?.addEventListener('click', () => selectImportRows('low'));
+            document.getElementById('selectSafeImportBtn')?.addEventListener('click', () => selectImportRows('safe'));
+            document.getElementById('selectAllImportBtn')?.addEventListener('click', () => selectImportRows('all'));
         }
 
         // ---------- Reminders & notifications ----------
@@ -1314,7 +1680,9 @@
                 items.forEach((item, index) => {
                     const next = getNextOccurrence(item, now);
                     if (next && next <= nextWindow && next >= today) {
-                        upcoming.push({ ...item, type, nextDate: formatDateLocal(next), reminderKey: `${appData.activeBudgetId}:${type}:${index}:${formatDateLocal(next)}` });
+                        const nextDate = formatDateLocal(next);
+                        if (hasMatchingRecurringCopy(budget, item, type, nextDate)) return;
+                        upcoming.push({ ...item, type, sourceIndex: index, nextDate, reminderKey: `${appData.activeBudgetId}:${type}:${index}:${nextDate}` });
                     }
                 });
             };
@@ -1326,9 +1694,11 @@
                 const label = escapeHTML(r.source || r.category || 'Recurring item');
                 const amount = Number(r.amount || 0).toFixed(2);
                 const typeClass = r.type === 'Income' ? 'income' : 'expense';
+                const actionType = r.type === 'Income' ? 'wage' : 'expense';
                 return `<div class="reminder-item">
                     <div class="reminder-copy"><strong>${escapeHTML(r.type)}</strong><span>${label} • ${escapeHTML(RECURRENCE_LABELS[normaliseRecurrence(r)])}</span></div>
                     <div class="reminder-meta"><span class="amount ${typeClass}">£${amount}</span><small>${escapeHTML(r.nextDate)}</small></div>
+                    <div class="install-actions reminder-actions"><button class="secondary btn-sm" data-recurring-action="add-next" data-type="${actionType}" data-index="${r.sourceIndex}" data-date="${r.nextDate}">Add due</button><button class="secondary btn-sm" data-recurring-action="edit" data-type="${actionType}" data-index="${r.sourceIndex}">Edit</button><button class="ghost btn-sm" data-recurring-action="stop" data-type="${actionType}" data-index="${r.sourceIndex}">Stop repeat</button></div>
                 </div>`;
             }).join('') : '<div class="empty-state small">No recurring bills, subscriptions, or income due in the next 30 days.</div>';
             if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
@@ -1344,6 +1714,36 @@
             }
         }
 
+        function handleRecurringAction(event) {
+            const button = event.target.closest('[data-recurring-action]');
+            if (!button) return;
+            const budget = getActiveBudget();
+            if (!budget) return;
+            const type = button.dataset.type;
+            const list = type === 'wage' ? budget.wages : budget.expenses;
+            const index = Number(button.dataset.index);
+            const item = list?.[index];
+            if (!item) return;
+            const action = button.dataset.recurringAction;
+            if (action === 'edit') { openEditModal(type, index); return; }
+            if (action === 'stop') {
+                if (!confirm('Stop this item repeating? Existing transactions stay in the vault.')) return;
+                item.recurrence = 'none'; item.recurring = false;
+            } else if (action === 'add-next') {
+                const date = button.dataset.date || formatDateLocal(getNextOccurrence(item) || new Date());
+                const exists = list.some(row => row !== item && row.date === date && Math.abs(Number(row.amount || 0) - Number(item.amount || 0)) < 0.01 && String(row.source || row.description || '') === String(item.source || item.description || ''));
+                if (exists && !confirm('A similar transaction already exists on that date. Add another copy anyway?')) return;
+                const copy = cloneData(item);
+                copy.date = date;
+                copy.recurrence = 'none';
+                copy.recurring = false;
+                copy.reviewed = false;
+                list.push(copy);
+            }
+            saveAndEncrypt();
+            renderAll();
+        }
+
         // ---------- Render all ----------
         function renderAll() {
             appData = normaliseData(appData);
@@ -1352,6 +1752,7 @@
             renderDashboard(budget);
             renderSmartInsights(budget);
             renderTables(budget);
+            renderReviewQueue(budget);
             renderBudgetSelector();
             renderImportLearningRules();
             renderImportReview();
@@ -1365,62 +1766,71 @@
         function renderDashboard(budget) {
             const { range, wages, expenses } = getCycleItems(budget);
             const income = wages.reduce((s,w) => s + Number(w.amount || 0), 0);
-            const exp = expenses.reduce((s,e) => s + Number(e.amount || 0), 0);
-            const bal = income - exp;
+            const totalOut = expenses.reduce((s,e) => s + Number(e.amount || 0), 0);
+            const savingsMoved = getSavingsContributions(expenses);
+            const spendingExpenses = getSpendingExpenses(expenses);
+            const exp = spendingExpenses.reduce((s,e) => s + Number(e.amount || 0), 0);
+            const plannedIncome = Number(budget.plannedIncome || 0);
+            const planningIncome = Math.max(income, plannedIncome);
+            const bal = income - totalOut;
             const limit = budget.budgetGoal || 0;
             const savingsGoal = budget.savingsGoal || 0;
+            const savingsTotal = getSavingsTotal(budget);
+            const savingsBase = Number(budget.savingsBalance || 0);
+            const allSavingsMoved = getSavingsContributions(budget.expenses || []);
             const spendPctRaw = limit > 0 ? (exp / limit) * 100 : 0;
             const spendPct = limit > 0 ? Math.min(100, spendPctRaw) : 0;
-            const safeSavings = Math.max(0, bal);
-            const savingsPctRaw = savingsGoal > 0 ? (safeSavings / savingsGoal) * 100 : 0;
-            const savingsPct = savingsGoal > 0 ? Math.min(100, savingsPctRaw) : 0;
             const leftToBudget = Math.max(0, limit - exp);
-            const overBudget = limit > 0 && exp > limit ? `<small class="danger-text">£${(exp-limit).toFixed(2)} over spending limit</small>` : '<small>Within your spending limit.</small>';
-            const savingsText = savingsGoal > 0 ? `${savingsPctRaw.toFixed(0)}% saved this cycle` : 'No savings target set';
-            const savingsMeta = savingsGoal > 0 ? `<small>£${Math.max(0, savingsGoal-safeSavings).toFixed(2)} left to target</small>` : '<small>Set a target to track leftover money.</small>';
+            const projectedLeftover = planningIncome - totalOut;
+            const savingsPctRaw = savingsGoal > 0 ? (savingsTotal / savingsGoal) * 100 : 0;
+            const savingsPct = savingsGoal > 0 ? Math.min(100, savingsPctRaw) : 0;
+            const overBudget = limit > 0 && exp > limit ? `<small class="danger-text">£${(exp-limit).toFixed(2)} over spending limit</small>` : '<small>Within your spending limit. Savings transfers are tracked separately.</small>';
+            const savingsText = savingsGoal > 0 ? `${savingsPctRaw.toFixed(0)}% of savings target` : 'No savings target set';
+            const savingsMeta = savingsGoal > 0 ? `<small>£${Math.max(0, savingsGoal-savingsTotal).toFixed(2)} left to savings target • £${savingsBase.toFixed(2)} starting + £${allSavingsMoved.toFixed(2)} saved in BudgetVault</small>` : `<small>Current savings total: £${savingsTotal.toFixed(2)}. Set a target to track progress.</small>`;
             document.getElementById('dashboard').innerHTML = `
-                <div class="stat-card balance-card">
-                    <div class="stat-top"><span class="stat-icon">💷</span><span class="pill">${escapeHTML(range.label)}</span></div>
-                    <div class="label">Cycle Balance</div>
-                    <div class="value">£${bal.toFixed(2)}</div>
-                    <small>${currentFilterMonth || searchTerm ? 'Filtered view' : 'Current planning cycle'}</small>
-                </div>
-                <div class="stat-card income-card">
-                    <div class="stat-top"><span class="stat-icon">↗</span><span class="trend good">Income</span></div>
-                    <div class="label">Money In</div>
-                    <div class="value">£${income.toFixed(2)}</div>
-                    <small>${wages.length} income item${wages.length === 1 ? '' : 's'}</small>
-                </div>
-                <div class="stat-card expense-card">
-                    <div class="stat-top"><span class="stat-icon">↘</span><span class="trend bad">Spending</span></div>
-                    <div class="label">Money Out</div>
-                    <div class="value">£${exp.toFixed(2)}</div>
-                    <small>${expenses.length} expense item${expenses.length === 1 ? '' : 's'}</small>
-                </div>
-                <div class="stat-card goal-card">
-                    <div class="stat-top"><span class="stat-icon">🎯</span><span class="pill">Spending limit</span></div>
-                    <div class="label">Budget Limit</div>
-                    <div class="value">£${limit.toFixed(2)}</div>
-                    <div class="progress-container">
-                        <div class="progress-meta"><span>${limit > 0 ? `${spendPctRaw.toFixed(0)}% used` : 'No limit set'}</span></div>
-                        <div class="progress-bar"><div class="progress-fill ${exp>limit&&limit>0?'over':''}" style="width:${spendPct}%"></div></div>
-                        ${overBudget}
+                <div class="cards dash-grid">
+                    <div class="vault-hero">
+                        <div class="vh-top">
+                            <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg> Net this cycle</span>
+                            <span class="pill">${escapeHTML(range.label)}${currentFilterMonth || searchTerm ? ' · filtered' : ''}</span>
+                        </div>
+                        <div class="vh-figure ${bal < 0 ? 'neg' : ''}">£${bal.toFixed(2)}</div>
+                        <div class="vh-breakdown">
+                            <div class="vh-stat in"><span class="k"><span class="dot in"></span>Money in</span><span class="v">£${income.toFixed(2)}</span></div>
+                            <div class="vh-stat"><span class="k"><span class="dot out"></span>Money out</span><span class="v">£${totalOut.toFixed(2)}</span></div>
+                            <div class="vh-stat"><span class="k"><span class="dot out"></span>Spending</span><span class="v">£${exp.toFixed(2)}</span></div>
+                            <div class="vh-stat saved"><span class="k"><span class="dot saved"></span>Saved</span><span class="v">£${savingsMoved.toFixed(2)}</span></div>
+                        </div>
                     </div>
-                </div>
-                <div class="stat-card goal-card">
-                    <div class="stat-top"><span class="stat-icon">🧮</span><span class="pill">Planner</span></div>
-                    <div class="label">Left to budget</div>
-                    <div class="value">£${leftToBudget.toFixed(2)}</div>
-                    <small>${budget.rolloverEnabled ? 'Category rollover is on for next cycle.' : 'Turn on rollover in Budget planner if you want unused category money carried forward.'}</small>
-                </div>
-                <div class="stat-card goal-card">
-                    <div class="stat-top"><span class="stat-icon">🏦</span><span class="pill">Savings</span></div>
-                    <div class="label">Savings Target</div>
-                    <div class="value">£${safeSavings.toFixed(2)} / £${savingsGoal.toFixed(2)}</div>
-                    <div class="progress-container">
-                        <div class="progress-meta"><span>${savingsText}</span></div>
-                        <div class="progress-bar"><div class="progress-fill" style="width:${savingsPct}%"></div></div>
-                        ${savingsMeta}
+
+                    <div class="card dial-card">
+                        <div class="c-top"><div class="c-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 12l4-2.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></div><span class="c-label">Spending cap</span></div>
+                        <div class="dial-wrap">
+                            <div class="dial ${limit > 0 && exp > limit ? 'over' : ''}" style="--pct:${spendPct}">
+                                <div class="dial-center"><div class="p">${limit > 0 ? spendPctRaw.toFixed(0) + '%' : '—'}</div><div class="l">of cap</div></div>
+                            </div>
+                            <div class="dial-info">
+                                <div class="di-big">£${leftToBudget.toFixed(2)}</div>
+                                <div class="di-sub">${limit > 0 ? (exp > limit ? `£${(exp - limit).toFixed(2)} over your £${limit.toFixed(2)} cap` : `left of your £${limit.toFixed(2)} cap`) : 'No spending cap set yet — add one in Plan.'}</div>
+                                <div class="di-sub">Spent £${exp.toFixed(2)}${savingsMoved > 0 ? ` · £${savingsMoved.toFixed(2)} moved to savings (not counted)` : ''}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card pos">
+                        <div class="c-top"><div class="c-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10l9-5 9 5"/><path d="M5 10v8M19 10v8M9 10v8M15 10v8M3 21h18"/></svg></div><span class="c-label">Savings</span></div>
+                        <div class="c-figure">£${savingsTotal.toFixed(2)}</div>
+                        <div class="progress">
+                            <div class="progress-meta"><span>${savingsGoal > 0 ? `${savingsPctRaw.toFixed(0)}% of £${savingsGoal.toFixed(2)}` : 'No target set'}</span><span>${savingsGoal > 0 ? `£${Math.max(0, savingsGoal - savingsTotal).toFixed(2)} to go` : ''}</span></div>
+                            <div class="bar"><span class="pos" style="width:${savingsPct}%"></span></div>
+                        </div>
+                        <div class="c-foot">£${savingsBase.toFixed(2)} starting + £${allSavingsMoved.toFixed(2)} saved in BudgetVault</div>
+                    </div>
+
+                    <div class="card">
+                        <div class="c-top"><div class="c-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></div><span class="c-label">Left to budget</span></div>
+                        <div class="c-figure">£${leftToBudget.toFixed(2)}</div>
+                        <div class="c-foot">${budget.rolloverEnabled ? 'Category rollover is on — unspent limits carry forward.' : 'Turn on rollover in Plan to carry unused category money forward.'}</div>
                     </div>
                 </div>`;
         }
@@ -1430,10 +1840,13 @@
             if (!container || !budget) return;
             const { range, wages, expenses } = getCycleItems(budget);
             const income = wages.reduce((s,w) => s + Number(w.amount || 0), 0);
-            const spent = expenses.reduce((s,e) => s + Number(e.amount || 0), 0);
-            const balance = income - spent;
+            const totalOut = expenses.reduce((s,e) => s + Number(e.amount || 0), 0);
+            const spent = getSpendingExpenses(expenses).reduce((s,e) => s + Number(e.amount || 0), 0);
+            const savingsMoved = getSavingsContributions(expenses);
+            const savingsTotal = getSavingsTotal(budget);
+            const balance = income - totalOut;
             const upcomingOutflow = getFutureRecurringOutflowForRange(budget, range);
-            const remainingSavingsTarget = Math.max(0, Number(budget.savingsGoal || 0) - Math.max(0, balance));
+            const remainingSavingsTarget = Math.max(0, Number(budget.savingsGoal || 0) - savingsTotal);
             const safeToSpend = Math.max(0, balance - upcomingOutflow - remainingSavingsTarget);
             const categories = getCategoryLimitHealth(budget, expenses);
             const overCategories = categories.filter(c => c.over);
@@ -1444,41 +1857,35 @@
             const upcoming30 = getUpcomingRecurringItems(budget, 30);
             const billTotal30 = upcoming30.filter(i => i.type === 'Expense').reduce((s, item) => s + Number(item.amount || 0), 0);
             container.innerHTML = `
-                <div class="card">
-                    <div class="stat-top"><span class="stat-icon">👛</span><span class="pill">After bills + savings</span></div>
-                    <div class="label">Safe to spend</div>
-                    <div class="value">£${safeToSpend.toFixed(2)}</div>
-                    <small>Balance £${balance.toFixed(2)} minus upcoming bills £${upcomingOutflow.toFixed(2)} and remaining savings target £${remainingSavingsTarget.toFixed(2)}.</small>
+                <div class="insight hero-insight">
+                    <div class="c-top"><span class="c-label">Safe to spend · after bills &amp; savings</span></div>
+                    <div class="c-figure">£${safeToSpend.toFixed(2)}</div>
+                    <div class="c-foot">Net £${balance.toFixed(2)} − upcoming bills £${upcomingOutflow.toFixed(2)} − savings still to set aside £${remainingSavingsTarget.toFixed(2)}.${savingsMoved > 0 ? ` £${savingsMoved.toFixed(2)} already moved to savings in this view.` : ''}</div>
                 </div>
-                <div class="card">
-                    <div class="stat-top"><span class="stat-icon">📅</span><span class="pill">Next 30 days</span></div>
-                    <div class="label">Bills / subscriptions</div>
-                    <div class="value">£${billTotal30.toFixed(2)}</div>
-                    <small>${upcoming30.length} recurring item${upcoming30.length === 1 ? '' : 's'} coming up.</small>
+                <div class="insight">
+                    <div class="c-top"><span class="c-label">Bills · next 30 days</span><span class="mini-chip">${upcoming30.length} due</span></div>
+                    <div class="c-figure">£${billTotal30.toFixed(2)}</div>
+                    <div class="c-foot">${upcoming30.length ? `${upcoming30.length} recurring item${upcoming30.length === 1 ? '' : 's'} coming up.` : 'No recurring items scheduled.'}</div>
                 </div>
-                <div class="card">
-                    <div class="stat-top"><span class="stat-icon">🏷️</span><span class="pill">Category health</span></div>
-                    <div class="label">Limits over</div>
-                    <div class="value">${overCategories.length}</div>
-                    <small>${overCategories.length ? overCategories.map(c => escapeHTML(c.category)).slice(0, 3).join(', ') : 'All category limits are okay.'}</small>
+                <div class="insight">
+                    <div class="c-top"><span class="c-label">Category limits</span>${overCategories.length ? '<span class="mini-chip needs-review-chip">over</span>' : '<span class="mini-chip reviewed-chip">on track</span>'}</div>
+                    <div class="c-figure"${overCategories.length ? ' style="color:var(--neg)"' : ''}>${overCategories.length}</div>
+                    <div class="c-foot">${overCategories.length ? `Over: ${overCategories.map(c => escapeHTML(c.category)).slice(0, 3).join(', ')}` : 'All category limits are within range.'}</div>
                 </div>
-                <div class="card">
-                    <div class="stat-top"><span class="stat-icon">✅</span><span class="pill">Clean-up</span></div>
-                    <div class="label">Need review</div>
-                    <div class="value">${unreviewed}</div>
-                    <small>Mark transactions reviewed after checking they are correct.</small>
+                <div class="insight">
+                    <div class="c-top"><span class="c-label">Top category</span></div>
+                    <div class="c-figure">${topCategory ? escapeHTML(topCategory[0]) : '—'}</div>
+                    <div class="c-foot">${topCategory ? `£${Number(topCategory[1]).toFixed(2)} spent this cycle.` : 'Add expenses to see your biggest area.'}</div>
                 </div>
-                <div class="card">
-                    <div class="stat-top"><span class="stat-icon">🔥</span><span class="pill">Top spend</span></div>
-                    <div class="label">Largest category</div>
-                    <div class="value">${topCategory ? escapeHTML(topCategory[0]) : '—'}</div>
-                    <small>${topCategory ? `£${Number(topCategory[1]).toFixed(2)} this cycle.` : 'Add expenses to see your biggest area.'}</small>
+                <div class="insight">
+                    <div class="c-top"><span class="c-label">Biggest expense</span></div>
+                    <div class="c-figure">${biggest ? `£${Number(biggest.amount || 0).toFixed(2)}` : '—'}</div>
+                    <div class="c-foot">${biggest ? `${escapeHTML(biggest.category || 'Other')} · ${escapeHTML(biggest.description || biggest.date)}` : 'No expenses in this cycle.'}</div>
                 </div>
-                <div class="card">
-                    <div class="stat-top"><span class="stat-icon">💳</span><span class="pill">Biggest item</span></div>
-                    <div class="label">Largest expense</div>
-                    <div class="value">${biggest ? `£${Number(biggest.amount || 0).toFixed(2)}` : '—'}</div>
-                    <small>${biggest ? `${escapeHTML(biggest.category || 'Other')} • ${escapeHTML(biggest.description || biggest.date)}` : 'No expenses in this cycle.'}</small>
+                <div class="insight">
+                    <div class="c-top"><span class="c-label">To review</span>${unreviewed ? `<span class="mini-chip needs-review-chip">${unreviewed}</span>` : '<span class="mini-chip reviewed-chip">clear</span>'}</div>
+                    <div class="c-figure">${unreviewed}</div>
+                    <div class="c-foot">${unreviewed ? 'Check new and imported items, then mark them reviewed.' : 'Everything has been reviewed.'}</div>
                 </div>`;
         }
 
@@ -1488,9 +1895,34 @@
         }
 
         
+function applyActivityFilter(items, type) {
+    let rows = [...items];
+    if (activityFilter === 'needs-review') rows = rows.filter(item => !item.reviewed);
+    else if (activityFilter === 'reviewed') rows = rows.filter(item => item.reviewed);
+    else if (activityFilter === 'recurring') rows = rows.filter(item => normaliseRecurrence(item) !== 'none');
+    else if (activityFilter === 'income') rows = type === 'wage' ? rows : [];
+    else if (activityFilter === 'expenses') rows = type === 'expense' ? rows : [];
+    const limit = activityLimit === 'all' ? Infinity : Number(activityLimit || 50);
+    rows.sort((a, b) => b.date.localeCompare(a.date));
+    return rows.slice(0, limit);
+}
+
+function renderReviewQueue(budget) {
+    const wrap = document.getElementById('reviewQueue');
+    if (!wrap || !budget) return;
+    const rows = [
+        ...(budget.wages || []).map((item, index) => ({ type: 'wage', item, index, label: item.source || 'Income', amountClass: 'income' })),
+        ...(budget.expenses || []).map((item, index) => ({ type: 'expense', item, index, label: `${item.category || 'Other'} • ${item.description || 'No description'}`, amountClass: 'expense' }))
+    ].filter(row => !row.item.reviewed).sort((a, b) => b.item.date.localeCompare(a.item.date)).slice(0, 12);
+    wrap.innerHTML = rows.length ? rows.map(row => `<div class="review-item">
+        <div><strong>${escapeHTML(row.label)}</strong><span>${escapeHTML(row.item.date)} • ${row.type === 'wage' ? 'Money in' : 'Money out'}</span></div>
+        <div class="review-actions"><span class="amount ${row.amountClass}">£${Number(row.item.amount || 0).toFixed(2)}</span><button class="secondary btn-sm" data-action="review-item" data-type="${row.type}" data-index="${row.index}">Review</button></div>
+    </div>`).join('') : '<div class="empty-state small">Nothing needs review. Imported and edited transactions you have checked will appear as reviewed.</div>';
+}
+
 function renderTables(budget) {
-    const fw = filterAndSearch(budget.wages, ['date','source','amount','recurrence'], budget, false);
-    const fe = filterAndSearch(budget.expenses, ['date','category','description','amount','recurrence'], budget, false);
+    const fw = applyActivityFilter(filterAndSearch(budget.wages, ['date','source','amount','recurrence'], budget, false), 'wage');
+    const fe = applyActivityFilter(filterAndSearch(budget.expenses, ['date','category','description','amount','recurrence'], budget, false), 'expense');
     const wtbody = document.querySelector('#wageTable tbody');
     wtbody.innerHTML = fw.length ? fw.map(w => {
         const idx = budget.wages.indexOf(w);
@@ -1499,10 +1931,10 @@ function renderTables(budget) {
             <td data-label="Amount"><span class="amount income">£${Number(w.amount || 0).toFixed(2)}</span></td>
             <td data-label="Source">${escapeHTML(w.source || 'No source')}</td>
             <td data-label="Repeat">${getRecurrenceBadge(w)}</td>
-            <td data-label="Review"><button class="btn-sm ${w.reviewed ? 'secondary reviewed-chip' : 'secondary needs-review-chip'}" data-action="toggle-review" data-type="wage" data-index="${idx}">${w.reviewed ? 'Reviewed' : 'Review'}</button></td>
+            <td data-label="Review"><button class="btn-sm ${w.reviewed ? 'secondary reviewed-chip' : 'secondary needs-review-chip'}" data-action="${w.reviewed ? 'toggle-review' : 'review-item'}" data-type="wage" data-index="${idx}">${w.reviewed ? 'Reviewed' : 'Review'}</button></td>
             <td data-label="Action"><div class="install-actions"><button class="secondary btn-sm" data-action="edit-item" data-type="wage" data-index="${idx}">Edit</button><button class="secondary btn-sm" data-action="duplicate-item" data-type="wage" data-index="${idx}">Copy</button><button class="danger btn-sm" data-action="delete-item" data-type="wage" data-index="${idx}">Delete</button></div></td>
         </tr>`;
-    }).join('') : '<tr class="empty-row"><td colspan="6"><div class="empty-state small">No income items match the current view.</div></td></tr>';
+    }).join('') : '<tr class="empty-row"><td colspan="6"><div class="empty-state small">No income items match the current view/filter.</div></td></tr>';
     const etbody = document.querySelector('#expenseTable tbody');
     etbody.innerHTML = fe.length ? fe.map(e => {
         const idx = budget.expenses.indexOf(e);
@@ -1512,10 +1944,10 @@ function renderTables(budget) {
             <td data-label="Category">${escapeHTML(e.category || 'Other')}</td>
             <td data-label="Description">${escapeHTML(e.description || 'No description')}</td>
             <td data-label="Repeat">${getRecurrenceBadge(e)}</td>
-            <td data-label="Review"><button class="btn-sm ${e.reviewed ? 'secondary reviewed-chip' : 'secondary needs-review-chip'}" data-action="toggle-review" data-type="expense" data-index="${idx}">${e.reviewed ? 'Reviewed' : 'Review'}</button></td>
+            <td data-label="Review"><button class="btn-sm ${e.reviewed ? 'secondary reviewed-chip' : 'secondary needs-review-chip'}" data-action="${e.reviewed ? 'toggle-review' : 'review-item'}" data-type="expense" data-index="${idx}">${e.reviewed ? 'Reviewed' : 'Review'}</button></td>
             <td data-label="Action"><div class="install-actions"><button class="secondary btn-sm" data-action="edit-item" data-type="expense" data-index="${idx}">Edit</button><button class="secondary btn-sm" data-action="duplicate-item" data-type="expense" data-index="${idx}">Copy</button><button class="danger btn-sm" data-action="delete-item" data-type="expense" data-index="${idx}">Delete</button></div></td>
         </tr>`;
-    }).join('') : '<tr class="empty-row"><td colspan="7"><div class="empty-state small">No expenses match the current view.</div></td></tr>';
+    }).join('') : '<tr class="empty-row"><td colspan="7"><div class="empty-state small">No expenses match the current view/filter.</div></td></tr>';
 }
 
 function handleTableAction(event) {
@@ -1531,6 +1963,10 @@ function handleTableAction(event) {
         list.splice(index, 1);
     } else if (button.dataset.action === 'toggle-review') {
         list[index].reviewed = !list[index].reviewed;
+    } else if (button.dataset.action === 'review-item') {
+        openEditModal(type, index);
+        document.getElementById('editReviewed').checked = true;
+        return;
     } else if (button.dataset.action === 'edit-item') {
         openEditModal(type, index);
         return;
@@ -1756,7 +2192,7 @@ function updateCharts(budget) {
 function updateExpenseChart(budget) {
     const { expenses } = getCycleItems(budget);
     const cats = {};
-    expenses.forEach(e => {
+    getSpendingExpenses(expenses).forEach(e => {
         const c = e.category || 'Other';
         cats[c] = (cats[c] || 0) + Number(e.amount || 0);
     });
@@ -1781,8 +2217,9 @@ function updateCategoryBudgetChart(budget) {
 function updateBalanceChart(budget) {
     const { wages, expenses } = getCycleItems(budget);
     const income = wages.reduce((s,w)=>s+Number(w.amount||0),0);
-    const exp = expenses.reduce((s,e)=>s+Number(e.amount||0),0);
-    drawDonutChart(document.getElementById('balanceChart'), ['Income', 'Spending'], [income, exp], 'Current cycle');
+    const spending = getSpendingExpenses(expenses).reduce((s,e)=>s+Number(e.amount||0),0);
+    const saved = getSavingsContributions(expenses);
+    drawDonutChart(document.getElementById('balanceChart'), ['Income', 'Spending', 'Saved'], [income, spending, saved], 'Current view');
 }
 
 function getRecentPeriods(budget, count = 6) {
@@ -1859,8 +2296,14 @@ function renderYearlyReport() {
 
         // ---------- Search, sort, month filter ----------
         document.getElementById('searchBox').addEventListener('input', e => { searchTerm = e.target.value; renderAll(); });
+        document.getElementById('viewRangeSelect')?.addEventListener('change', e => { viewRangeMode = e.target.value; localStorage.setItem('viewRangeMode', viewRangeMode); currentFilterMonth = null; const fm = document.getElementById('filterMonth'); if (fm) fm.value=''; renderAll(); });
         document.getElementById('applyFilter').addEventListener('click', () => { currentFilterMonth = document.getElementById('filterMonth').value; renderAll(); });
         document.getElementById('resetFilter').addEventListener('click', () => { currentFilterMonth = null; document.getElementById('filterMonth').value=''; renderAll(); });
+        document.getElementById('activityFilterSelect')?.addEventListener('change', e => { activityFilter = e.target.value; localStorage.setItem('activityFilter', activityFilter); renderAll(); });
+        document.getElementById('activityLimitSelect')?.addEventListener('change', e => { activityLimit = e.target.value; localStorage.setItem('activityLimit', activityLimit); renderAll(); });
+        document.getElementById('reviewQueue')?.addEventListener('click', handleTableAction);
+        document.getElementById('reminderList')?.addEventListener('click', handleRecurringAction);
+        document.getElementById('applySuggestedCapBtn')?.addEventListener('click', () => { const budget = getActiveBudget(); if (!budget) return; const { wages } = getCycleItems(budget); const income = wages.reduce((s,w)=>s+Number(w.amount||0),0) || Number(budget.plannedIncome || 0); const leftover = Number(document.getElementById('savingsGoalInput')?.value || budget.savingsGoal || 0); const cap = Math.max(0, income - leftover); document.getElementById('budgetGoalInput').value = cap ? cap.toFixed(2) : ''; });
         document.querySelectorAll('th[data-sort]').forEach(th => {
             th.addEventListener('click', () => {
                 const field = th.dataset.sort;
@@ -1964,11 +2407,11 @@ document.getElementById('importFile').addEventListener('change', function(e) {
         try {
             const parsed = JSON.parse(ev.target.result);
             if (parsed?.format === 'budget-tracker-pro-encrypted-v1' && parsed.encrypted) {
-                const dec = await decryptData(parsed.encrypted, currentPassword);
+                const dec = (await decryptEnvelope(parsed.encrypted, currentPassword)).data;
                 const normalised = normaliseData(dec);
                 if (!isValidData(normalised)) throw new Error('Invalid encrypted backup.');
                 appData = normalised;
-                await storeEncrypted(appData, currentPassword);
+                await storeEncrypted(appData);
                 renderAll();
                 alert('Encrypted backup imported.');
             } else {
@@ -2035,12 +2478,18 @@ function showUnlockPrompt() {
     clearSensitiveFields('encryptPassword', 'encryptPasswordConfirm');
     resetEncryptionButton(async () => {
         const pw = document.getElementById('encryptPassword').value;
-        const dec = await loadDecrypted(pw);
+        let dec;
+        try {
+            dec = await unlockWithPassword(pw);
+        } catch (err) {
+            if (err && err.code === 'SERVER') { alert(err.message); return; }
+            alert('Wrong password or corrupted data.');
+            return;
+        }
         if (dec) {
             const normalised = normaliseData(dec);
             if (isValidData(normalised)) {
                 appData = normalised;
-                currentPassword = pw;
                 overlay.classList.add('hidden');
                 document.getElementById('appContent').classList.remove('hidden');
                 renderAll();
@@ -2069,10 +2518,16 @@ function showSetupPrompt() {
         const confirm = document.getElementById('encryptPasswordConfirm').value;
         const strength = evaluatePasswordStrength(pw);
         if (!pw || pw !== confirm) { alert('Passwords do not match.'); return; }
-        if (!strength.valid) { alert('Please choose a stronger password. Use 4 random words or at least 12 characters that are unique to this app.'); return; }
+        if (!strength.valid) { alert(`That password is too easy to crack offline (estimated strength ${strength.bits} bits; at least 70 is required).\n\nThe safest choice is 4 random, unrelated words, e.g. "otter lantern copper meadow". Avoid a word plus a year or "!".`); return; }
         appData = { budgets: [createDefaultBudget()], activeBudgetId:'1' };
-        currentPassword = pw;
-        await storeEncrypted(appData, pw);
+        try {
+            await establishSessionKey(pw);
+            await storeEncrypted(appData);
+        } catch (err) {
+            appData = { budgets: [], activeBudgetId: null };
+            alert(err && err.code === 'SERVER' ? err.message : `Could not set up encryption. ${err.message || ''}`);
+            return;
+        }
         overlay.classList.add('hidden');
         document.getElementById('appContent').classList.remove('hidden');
         renderAll();
@@ -2088,9 +2543,14 @@ async function changePassword() {
     if (old !== currentPassword) { alert('Current password is wrong.'); return; }
     if (!newPw || newPw !== confirm) { alert('New password entries do not match.'); return; }
     const strength = evaluatePasswordStrength(newPw);
-    if (!strength.valid) { alert('Use a stronger password. A long unique passphrase is safest.'); return; }
-    currentPassword = newPw;
-    await storeEncrypted(normaliseData(appData), newPw);
+    if (!strength.valid) { alert(`That password is too easy to crack offline (estimated strength ${strength.bits} bits; at least 70 is required). A long passphrase of 4 random words is safest.`); return; }
+    try {
+        await establishSessionKey(newPw);
+        await storeEncrypted(normaliseData(appData));
+    } catch (err) {
+        alert(err && err.code === 'SERVER' ? err.message : `Could not change password. ${err.message || ''}`);
+        return;
+    }
     clearSensitiveFields('changePasswordCurrent', 'changePasswordNew', 'changePasswordConfirm');
     updateStrengthMeter('changePasswordNew', 'changePasswordStrengthFill', 'changePasswordStrengthText', 'changePasswordStrengthWrap');
     setSaveStatus('Password changed and data re-encrypted.');
@@ -2111,26 +2571,31 @@ async function changePassword() {
 
         function renderReportsLab(budget) {
             renderCycleCompare(budget);
-            if (!document.getElementById('reportStartDate')?.value) {
-                const current = getCurrentPeriod(budget);
-                document.getElementById('reportStartDate').value = formatDateLocal(current.start);
-                document.getElementById('reportEndDate').value = formatDateLocal(addDays(current.end, -1));
+            const startInput = document.getElementById('reportStartDate');
+            const endInput = document.getElementById('reportEndDate');
+            if (startInput && endInput && !startInput.value) {
+                const range = getActiveViewRange(budget);
+                startInput.value = formatDateLocal(range.start);
+                endInput.value = formatDateLocal(addDays(range.end, -1));
             }
+            runCustomReport(false);
         }
 
         function renderCycleCompare(budget) {
-            const current = getCurrentPeriod(budget);
-            const previous = getPreviousPeriod(budget);
+            const current = getActiveViewRange(budget);
+            const spanDays = Math.max(1, daysBetween(current.start, current.end));
+            const previous = { type: current.type || 'range', start: addDays(current.start, -spanDays), end: current.start };
             const currentIncome = sumInPeriod(budget.wages, current);
             const currentSpend = sumInPeriod(budget.expenses, current);
             const prevIncome = sumInPeriod(budget.wages, previous);
             const prevSpend = sumInPeriod(budget.expenses, previous);
+            const avgSpend = currentSpend / spanDays;
             const container = document.getElementById('cycleCompareCards');
             if (!container) return;
             container.innerHTML = `
-                <div class="mini-stat"><span class="muted">Current net</span><strong>£${(currentIncome - currentSpend).toFixed(2)}</strong><span>${escapeHTML(formatPeriodLabel(current))}</span></div>
-                <div class="mini-stat"><span class="muted">Previous net</span><strong>£${(prevIncome - prevSpend).toFixed(2)}</strong><span>${escapeHTML(formatPeriodLabel(previous))}</span></div>
-                <div class="mini-stat"><span class="muted">Spending change</span><strong>${prevSpend ? (((currentSpend - prevSpend) / prevSpend) * 100).toFixed(0) : 0}%</strong><span>${currentSpend >= prevSpend ? 'Higher than last cycle' : 'Lower than last cycle'}</span></div>`;
+                <div class="mini-stat"><span class="muted">Current view net</span><strong>£${(currentIncome - currentSpend).toFixed(2)}</strong><span>${escapeHTML(current.label)}</span></div>
+                <div class="mini-stat"><span class="muted">Previous matching range</span><strong>£${(prevIncome - prevSpend).toFixed(2)}</strong><span>${formatShortDate(previous.start)}–${formatShortDate(addDays(previous.end, -1))}</span></div>
+                <div class="mini-stat"><span class="muted">Daily spend pace</span><strong>£${avgSpend.toFixed(2)}</strong><span>${prevSpend ? `${(((currentSpend - prevSpend) / prevSpend) * 100).toFixed(0)}% vs previous range` : 'No previous spend to compare'}</span></div>`;
         }
 
         function runCustomReport() {
@@ -2220,6 +2685,7 @@ async function changePassword() {
             document.getElementById('onboardingCycle').value = budget.periodType || 'monthly';
             document.getElementById('onboardingLimit').value = budget.budgetGoal ? String(budget.budgetGoal) : '';
             document.getElementById('onboardingSavings').value = budget.savingsGoal ? String(budget.savingsGoal) : '';
+            const onboardingSavingsBalance = document.getElementById('onboardingSavingsBalance'); if (onboardingSavingsBalance) onboardingSavingsBalance.value = budget.savingsBalance ? String(budget.savingsBalance) : '';
             document.getElementById('onboardingRollover').checked = Boolean(budget.rolloverEnabled);
             document.getElementById('onboardingModal')?.classList.remove('hidden');
         }
@@ -2355,7 +2821,9 @@ async function changePassword() {
             document.querySelector('#expenseTable tbody')?.addEventListener('click', handleTableAction);
             document.getElementById('markAllIncomeReviewedBtn')?.addEventListener('click', () => { const budget = getActiveBudget(); if (!budget) return; budget.wages.forEach(item => item.reviewed = true); saveAndEncrypt(); renderAll(); });
             document.getElementById('markAllExpensesReviewedBtn')?.addEventListener('click', () => { const budget = getActiveBudget(); if (!budget) return; budget.expenses.forEach(item => item.reviewed = true); saveAndEncrypt(); renderAll(); });
-            document.getElementById('runCustomReportBtn')?.addEventListener('click', runCustomReport);
+            document.getElementById('runCustomReportBtn')?.addEventListener('click', () => runCustomReport(true));
+            document.getElementById('reportStartDate')?.addEventListener('change', () => runCustomReport(true));
+            document.getElementById('reportEndDate')?.addEventListener('change', () => runCustomReport(true));
             document.getElementById('openOnboardingBtn')?.addEventListener('click', () => maybeShowOnboarding(true));
             document.getElementById('openGuideBtn')?.addEventListener('click', openGuideModal);
             document.getElementById('openGuideModalBtn')?.addEventListener('click', openGuideModal);
@@ -2418,6 +2886,7 @@ async function changePassword() {
                 budget.periodType = document.getElementById('onboardingCycle').value;
                 budget.budgetGoal = Number(document.getElementById('onboardingLimit').value || 0);
                 budget.savingsGoal = Number(document.getElementById('onboardingSavings').value || 0);
+                budget.savingsBalance = Number(document.getElementById('onboardingSavingsBalance')?.value || 0);
                 budget.rolloverEnabled = Boolean(document.getElementById('onboardingRollover').checked);
                 budget.categories = getStarterCategories(document.getElementById('onboardingStyle').value);
                 closeOnboarding();

@@ -1,11 +1,11 @@
 {
-  "version": "1.5.0",
+  "version": "2.1.0",
   "publishedAt": "2026-06-17",
   "notes": [
-    "Added optional AI bank-statement import through a Vercel backend using your OpenAI API key.",
-    "PDF uploads are off by default and show a privacy notice before anything is sent.",
-    "Parsed transactions now appear in a review table before money in/out enters the vault.",
-    "Category corrections create local encrypted learning rules for future statement uploads.",
-    "Added Vercel setup files, API health check, and README instructions for testing ChatGPT-powered imports."
+    "Security hardening release. Weak passwords (like a word plus a year) are now rejected, with a clearer strength meter that estimates how hard your password is to crack.",
+    "New optional Online high-security mode: your own server takes part in unlocking, so a stolen local file cannot be brute-forced offline.",
+    "Added a plain-language security explainer and password guidance inside the app, plus guidance for locking down the AI import endpoint.",
+    "Stronger key stretching (PBKDF2 1,000,000 rounds) with the derived key cached per session, so saving stays fast.",
+    "The AI import endpoint now enforces its allowed origin and supports an optional shared secret. Your data and budgets are unchanged."
   ]
 }

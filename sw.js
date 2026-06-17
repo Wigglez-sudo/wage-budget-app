@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'budgetvault-v1.5.0';
+const CACHE_VERSION = 'budgetvault-v2.1.0';
 const APP_SHELL = [
   './',
   './index.html',

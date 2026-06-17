@@ -3,25 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#08111f">
-  <title>Budget Tracker Pro Offline</title>
+  <meta name="theme-color" content="#080f1d">
+  <title>BudgetVault — Offline</title>
   <style>
-    :root { color-scheme: dark; --bg:#08111f; --surface:rgba(15,23,42,.86); --text:#f8fafc; --muted:#9fb1c7; --primary:#38bdf8; --border:rgba(148,163,184,.2); }
+    :root { color-scheme: dark; --bg:#080f1d; --surface:rgba(17,27,46,.86); --text:#f4f7fc; --muted:#9fb0cc; --brand:#3b7bff; --line:rgba(148,170,214,.18); }
     * { box-sizing:border-box; }
-    body { margin:0; min-height:100vh; min-height:100dvh; display:grid; place-items:center; padding:1rem; font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(56,189,248,.22), transparent 28rem), linear-gradient(145deg,#08111f,#0d1b2f); }
-    main { width:min(100%,28rem); border:1px solid var(--border); border-radius:30px; background:var(--surface); box-shadow:0 24px 70px rgba(0,0,0,.38); padding:1.25rem; text-align:center; backdrop-filter:blur(18px); }
-    img { width:5rem; height:5rem; border-radius:24px; margin-bottom:1rem; }
-    h1 { margin:.2rem 0 .6rem; letter-spacing:-.04em; }
-    p { color:var(--muted); line-height:1.55; }
-    a { display:inline-flex; margin-top:.7rem; min-height:46px; align-items:center; justify-content:center; padding:.72rem 1rem; border-radius:999px; color:#fff; background:linear-gradient(135deg,var(--primary),#0ea5e9); text-decoration:none; font-weight:800; }
+    body { margin:0; min-height:100vh; min-height:100dvh; display:grid; place-items:center; padding:1rem;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--text);
+      background:radial-gradient(130% 120% at 100% 0%, rgba(59,123,255,.18), transparent 55%), linear-gradient(160deg,#080f1d,#0c1830); }
+    main { width:min(100%,28rem); border:1px solid var(--line); border-radius:22px; background:var(--surface);
+      box-shadow:0 24px 70px rgba(0,0,0,.45); padding:1.6rem 1.4rem; text-align:center; backdrop-filter:blur(16px); }
+    img { width:4.25rem; height:4.25rem; border-radius:16px; margin-bottom:1rem; }
+    h1 { margin:.2rem 0 .55rem; letter-spacing:-.02em; font-size:1.4rem; }
+    p { color:var(--muted); line-height:1.55; font-size:.95rem; }
+    .lock { display:inline-flex; align-items:center; gap:.4rem; font-size:.74rem; text-transform:uppercase; letter-spacing:.09em;
+      font-weight:700; color:var(--muted); margin-bottom:.4rem; }
+    a { display:inline-flex; margin-top:1rem; min-height:46px; align-items:center; justify-content:center; padding:.72rem 1.3rem;
+      border-radius:12px; color:#fff; background:linear-gradient(135deg,var(--brand),#2563eb); text-decoration:none; font-weight:700; }
   </style>
 </head>
 <body>
   <main>
-    <img src="icons/icon-192.png" alt="Budget Tracker Pro icon">
-    <h1>You are offline</h1>
-    <p>The app shell is cached, but this page could not be loaded. Reopen Budget Tracker Pro from your home screen or try again when your connection returns.</p>
-    <a href="./index.html">Open app</a>
+    <img src="icons/icon-192.png" alt="BudgetVault icon">
+    <div class="lock">Private &amp; offline</div>
+    <h1>You're offline</h1>
+    <p>BudgetVault is cached and your data stays on this device, but this page couldn't load right now. Reopen the app from your home screen, or try again when your connection returns.</p>
+    <a href="./index.html">Open BudgetVault</a>
   </main>
 </body>
 </html>

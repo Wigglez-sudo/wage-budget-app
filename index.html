@@ -3,783 +3,1031 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#08111f">
+    <meta name="theme-color" content="#080f1d">
     <meta name="color-scheme" content="dark light">
     <meta name="application-name" content="BudgetVault">
     <meta name="apple-mobile-web-app-title" content="BudgetVault">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="description" content="BudgetVault is a privacy-first budgeting app with strong local encryption, offline access, flexible pay cycles, and secure backups.">
+    <meta name="description" content="BudgetVault is a privacy-first budgeting app with strong local encryption, offline access, flexible pay cycles, smart reports, and secure backups.">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://api.github.com https://*.vercel.app; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'; worker-src 'self'">
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <title>BudgetVault — Private budgeting that stays with you</title>
-    <meta name="referrer" content="no-referrer">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://api.github.com https://*.vercel.app; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'; worker-src 'self'">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="dark">
-    <!-- Encryption overlay -->
+
+    <!-- ============ Unlock / setup overlay ============ -->
     <div id="encryptOverlay" class="modal-overlay hidden">
         <div class="modal auth-card">
-            <span class="eyebrow">🔒 Private by design</span>
-            <h2 id="encryptTitle">Secure Your Data</h2>
+            <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Private by design</span>
+            <h2 id="encryptTitle">Secure your data</h2>
             <p id="encryptMsg"></p>
             <input type="password" id="encryptPassword" placeholder="Enter password" autocomplete="current-password">
             <input type="password" id="encryptPasswordConfirm" placeholder="Confirm password" autocomplete="new-password" class="hidden">
             <div id="passwordStrengthWrap" class="strength-wrap hidden">
                 <div class="strength-header"><strong>Password strength</strong><span id="passwordStrengthText">Use 4 random words or 16+ mixed characters.</span></div>
                 <div class="strength-meter" aria-hidden="true"><span id="passwordStrengthFill"></span></div>
-                <small class="field-note">Strong passwords matter because this app protects data locally. Weak passwords can still be guessed offline if someone gets your encrypted backup or browser storage.</small>
+                <small class="field-note">This password encrypts everything locally. A weak one can be guessed offline if someone gets your backup or browser storage.</small>
             </div>
             <button id="encryptSubmit"></button>
             <p class="security-note">
-                ⚠️ Lost password = lost data forever.<br>
-                <span title="AES-256-GCM, PBKDF2 600,000 iterations">AES-256-GCM • PBKDF2 600k</span>
+                Lost password means lost data — there is no recovery.<br>
+                <span class="mono" title="AES-256-GCM, PBKDF2 600,000 iterations">AES-256-GCM · PBKDF2 600k</span>
             </p>
         </div>
     </div>
 
-    <!-- PIN screen-lock overlay -->
+    <!-- ============ Screen-lock (PIN) overlay ============ -->
     <div id="pinOverlay" class="modal-overlay hidden">
         <div class="modal auth-card">
-            <span class="eyebrow">🛡️ Screen lock</span>
+            <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg> Screen lock</span>
             <h2>Enter your PIN</h2>
             <p id="pinHelp">This only locks the open screen. Your password still protects the encrypted data when the app is reopened.</p>
             <div class="pin-dots" id="pinDots" aria-live="polite"></div>
             <div class="pin-pad" id="pinPad" aria-label="PIN keypad"></div>
             <div class="pin-actions">
                 <button id="pinClear" class="secondary" type="button">Clear</button>
-                <button id="pinPasswordLogout" class="ghost" type="button">Use password instead</button>
+                <button id="pinPasswordLogout" class="ghost" type="button">Use password</button>
             </div>
         </div>
     </div>
 
-    <!-- Main App -->
+    <!-- ============ Main app ============ -->
     <div id="appContent" class="hidden app-shell">
-        <header class="app-hero" id="overview">
-            <div class="hero-top">
-                <div>
-                    <span class="eyebrow">💠 BudgetVault</span>
-                    <div class="hero-copy">
-                        <h1>BudgetVault</h1>
-                        <p class="hero-subtitle">Private budgeting that stays with you. Track money with strong local encryption, flexible cycles, smart reports, and cleaner tabbed navigation on mobile, tablet, and desktop.</p>
-                    </div>
-                </div>
-                <div class="top-actions" aria-label="App actions">
-                    <button id="openGuideBtn" class="secondary" type="button">📘 Guide</button>
-                    <button id="openWhatsNewBtn" class="secondary" type="button">✨ What's new</button>
-                    <button id="setPinBtn" class="secondary" type="button">📌 Set PIN</button>
-                    <button id="lockNowBtn" class="secondary hidden" type="button">🔒 Lock</button>
-                    <button id="themeToggle" class="theme-toggle" type="button">🌓 Theme</button>
+
+        <!-- Sidebar (desktop) -->
+        <aside class="side-nav">
+            <div class="side-brand">
+                <img src="assets/budgetvault-mark.png" alt="" width="38" height="38">
+                <div class="wm"><b>BudgetVault</b><span>Private budgeting</span></div>
+            </div>
+            <div class="nav-list">
+                <button type="button" class="nav-item is-active" data-tab-trigger="home" role="tab" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/></svg> Overview</button>
+                <button type="button" class="nav-item" data-tab-trigger="add" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg> Add money</button>
+                <button type="button" class="nav-item" data-tab-trigger="plan" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg> Plan</button>
+                <button type="button" class="nav-item" data-tab-trigger="activity" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg> Activity</button>
+                <button type="button" class="nav-item" data-tab-trigger="reports" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg> Reports</button>
+            </div>
+            <div class="side-section-label">More</div>
+            <div class="nav-list">
+                <button type="button" class="nav-item" data-tab-trigger="import" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z"/><path d="M18 14l.7 1.9L20.5 17l-1.8.6L18 19l-.6-1.4L15.5 17l1.9-.7L18 14Z"/></svg> AI import</button>
+                <button type="button" class="nav-item" data-tab-trigger="security" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg> Security</button>
+            </div>
+            <div class="nav-spacer"></div>
+            <div class="side-foot">
+                <button type="button" class="nav-item" id="securityJumpBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7"/></svg> Settings &amp; data</button>
+                <div class="vh-stat" style="margin-top:.4rem">
+                    <span class="k">Build</span>
+                    <span class="v mono" id="versionChip" style="font-size:.9rem">v2.0.1</span>
                 </div>
             </div>
-            <div class="hero-status">
-                <span class="status-chip">🧾 <span data-active-budget-name>Budget</span></span>
-                <span class="status-chip">🔐 Password on app restart</span>
-                <span class="status-chip" id="pinStatusChip">🛡️ PIN lock optional</span>
-                <span class="status-chip">📱 PWA ready</span>
-                <span class="status-chip" id="versionChip">🆕 v1.3.0</span>
-            </div>
-        </header>
+        </aside>
 
-        <div id="installBanner" class="install-banner hidden">
-            <div>
-                <strong>📱 Install this app</strong>
-                <p id="installHelp">Install it to your home screen for a full-screen mobile app experience.</p>
-            </div>
-            <div class="install-actions">
-                <button id="installAppBtn">Install</button>
-                <button id="dismissInstallBtn" class="secondary">Not now</button>
-            </div>
-        </div>
-
-        <div id="updateBanner" class="install-banner hidden update-banner">
-            <div>
-                <strong>⬆️ Update ready</strong>
-                <p id="updateBannerText">A newer app version is available. Update to get the latest fixes and features.</p>
-            </div>
-            <div class="install-actions">
-                <button id="applyUpdateBtn">Update now</button>
-                <button id="dismissUpdateBtn" class="secondary">Later</button>
-            </div>
-        </div>
-
-        <div class="status-rail">
-            <div class="app-status" id="saveStatus" aria-live="polite"></div>
-            <div class="status-rail-right">
-                <span class="offline-badge">Offline mode</span>
-                <span class="offline-badge soft-badge" id="publishedChip">Published 16 Jun 2026</span>
-            </div>
-        </div>
-
-        <nav class="section-tabs" aria-label="App sections" role="tablist">
-            <button type="button" class="section-tab is-active" data-tab-trigger="home" role="tab" aria-selected="true">🏠 Overview</button>
-            <button type="button" class="section-tab" data-tab-trigger="add" role="tab" aria-selected="false">➕ Add</button>
-            <button type="button" class="section-tab" data-tab-trigger="import" role="tab" aria-selected="false">🤖 AI Import</button>
-            <button type="button" class="section-tab" data-tab-trigger="plan" role="tab" aria-selected="false">🧭 Plan</button>
-            <button type="button" class="section-tab" data-tab-trigger="activity" role="tab" aria-selected="false">📋 Activity</button>
-            <button type="button" class="section-tab" data-tab-trigger="reports" role="tab" aria-selected="false">📊 Reports</button>
-            <button type="button" class="section-tab" data-tab-trigger="security" role="tab" aria-selected="false">🔐 Security</button>
-        </nav>
-
-        <main class="main-grid">
-            <section class="panel tight wide" id="budgets" data-tab-panel="home">
-                <div class="budget-selector">
-                    <div class="budget-label">
-                        <label for="budgetSelect">Active budget</label>
-                        <span class="pill" data-active-budget-name>Budget</span>
-                    </div>
-                    <select id="budgetSelect"></select>
-                    <div class="budget-actions">
-                        <button id="newBudgetBtn">+ New Budget</button>
-                        <button id="deleteBudgetBtn" class="danger" style="display:none;">🗑 Delete</button>
-                        <button id="securityJumpBtn" class="secondary" type="button">🔐 Security</button>
-                    </div>
+        <!-- Main column -->
+        <div class="app-main">
+            <header class="topbar">
+                <div class="topbar-brand">
+                    <img src="assets/budgetvault-mark.png" alt="" width="30" height="30">
+                    <b>BudgetVault</b>
                 </div>
-            </section>
-
-            <section class="panel wide" data-tab-panel="home">
-                <div class="section-header">
-                    <div>
-                        <h2>Overview</h2>
-                        <p>Live totals for your current budget cycle.</p>
-                    </div>
+                <div class="topbar-actions">
+                    <button type="button" class="icon-btn" data-tab-trigger="import" aria-label="AI import"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z"/></svg></button>
+                    <button type="button" class="icon-btn" data-tab-trigger="security" aria-label="Security"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg></button>
+                    <button id="openWhatsNewBtn" class="icon-btn" type="button" aria-label="What's new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v9H4v-9M22 7H2v5h20V7ZM12 22V7M12 7S9 2 6.5 3.5 8.5 7 12 7 17.5 5 17.5 3.5 14.5 7 12 7Z"/></svg></button>
+                    <button id="openGuideBtn" class="icon-btn" type="button" aria-label="How to use"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2V5Z"/><path d="M9 8h7M9 12h5"/></svg></button>
+                    <button id="setPinBtn" class="icon-btn" type="button" aria-label="Set screen PIN"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
+                    <button id="lockNowBtn" class="icon-btn hidden" type="button" aria-label="Lock now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1.4"/></svg></button>
+                    <button id="themeToggle" class="icon-btn theme-toggle" type="button" aria-label="Switch theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg></button>
                 </div>
-                <div class="dashboard" id="dashboard"></div>
-            </section>
+            </header>
 
-            <section class="panel wide" id="smartInsights" data-tab-panel="home">
-                <div class="section-header">
-                    <div>
-                        <h2>Money check</h2>
-                        <p>Safe-to-spend, upcoming bills, category health, and items that need review.</p>
-                    </div>
-                </div>
-                <div class="dashboard insight-grid" id="insightCards"></div>
-            </section>
+            <div class="app-content">
 
-            <section class="panel wide" id="filters" data-tab-panel="home">
-                <div class="section-header">
-                    <div>
-                        <h2>Find transactions</h2>
-                        <p>Search, filter by month, or open your reports.</p>
-                    </div>
-                </div>
-                <div class="controls">
-                    <input type="text" id="searchBox" class="search-input" placeholder="🔍 Search source, category, amount...">
-                    <input type="month" id="filterMonth" aria-label="Filter month">
-                    <div class="filter-actions">
-                        <button id="applyFilter">Filter</button>
-                        <button id="resetFilter" class="secondary">Show All</button>
-                    </div>
-                    <button id="yearlyReportBtn" class="secondary">📊 Yearly Report</button>
-                </div>
-            </section>
+                <!-- ===================== OVERVIEW ===================== -->
+                <section class="panels" data-tab-panel="home" id="overview">
 
-            <section id="yearlyReport" class="panel wide hidden" data-tab-panel="home">
-                    <div class="yearly-toolbar">
-                        <div>
-                            <h2>Yearly Report</h2>
-                            <p class="hero-subtitle">Income versus expenses by month.</p>
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg> Your vault</span>
+                                <h2 data-active-budget-name>Budget</h2>
+                                <p class="sub">A private snapshot of this pay cycle — stored only on this device.</p>
+                            </div>
+                            <div class="head-actions">
+                                <span class="chip" id="pinStatusChip">Screen lock off</span>
+                                <span class="chip" id="publishedChip">—</span>
+                                <span class="chip offline-badge">Offline</span>
+                            </div>
                         </div>
-                        <div class="install-actions">
-                            <select id="yearSelect" aria-label="Select report year"></select>
-                            <button id="closeYearlyBtn" class="secondary">✖ Close</button>
+                        <div class="vault-bar">
+                            <label class="vault-bar-field">
+                                <span class="vb-label">Active budget</span>
+                                <select id="budgetSelect" aria-label="Active budget"></select>
+                            </label>
+                            <div class="vault-bar-actions">
+                                <button id="newBudgetBtn" class="secondary btn-sm" type="button">+ New</button>
+                                <button id="deleteBudgetBtn" class="ghost btn-sm" type="button">Delete</button>
+                            </div>
+                            <span class="app-status" id="saveStatus" role="status" aria-live="polite"></span>
                         </div>
                     </div>
-                    <div class="yearly-container"><canvas id="yearlyChart"></canvas></div>
-                    <div id="yearlySummary" class="dashboard" style="margin-top:1rem;"></div>
-            </section>
 
-            <section class="panel" id="add" data-tab-panel="add">
-                <div class="section-header">
-                    <div>
-                        <h2>Add money</h2>
-                        <p>Record wages or income.</p>
-                    </div>
-                </div>
-                <form id="wageForm">
-                    <div class="input-group"><label for="wageDate">Date</label><input type="date" id="wageDate" required></div>
-                    <div class="input-group"><label for="wageAmount">Amount</label><input type="number" id="wageAmount" placeholder="Amount (£)" step="0.01" min="0.01" required inputmode="decimal"></div>
-                    <div class="input-group"><label for="wageSource">Source</label><input type="text" id="wageSource" placeholder="Source"></div>
-                    <div class="input-group"><label for="wageRecurrence">Repeat</label><select id="wageRecurrence"><option value="none">One-off</option><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option><option value="fourweekly">Every 4 weeks</option><option value="monthly">Monthly</option></select></div>
-                    <button type="submit">➕ Add Income</button>
-                </form>
-            </section>
+                    <!-- Dashboard (rendered by app.js) -->
+                    <div id="dashboard"></div>
 
-            <section class="panel" data-tab-panel="add">
-                <div class="section-header">
-                    <div>
-                        <h2>Add spending</h2>
-                        <p>Record bills, purchases, or recurring expenses.</p>
-                    </div>
-                </div>
-                <form id="expenseForm">
-                    <div class="input-group"><label for="expenseDate">Date</label><input type="date" id="expenseDate" required></div>
-                    <div class="input-group"><label for="expenseAmount">Amount</label><input type="number" id="expenseAmount" placeholder="Amount (£)" step="0.01" min="0.01" required inputmode="decimal"></div>
-                    <div class="input-group"><label for="expenseCategory">Category</label><select id="expenseCategory"></select></div>
-                    <div class="input-group"><label for="expenseDesc">Description</label><input type="text" id="expenseDesc" placeholder="Description"></div>
-                    <div class="input-group"><label for="expenseRecurrence">Repeat</label><select id="expenseRecurrence"><option value="none">One-off</option><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option><option value="fourweekly">Every 4 weeks</option><option value="monthly">Monthly</option></select></div>
-                    <button type="submit">➖ Add Expense</button>
-                </form>
-            </section>
-
-
-            <section class="panel wide" id="aiImport" data-tab-panel="import">
-                <div class="section-header">
-                    <div>
-                        <h2>AI bank statement import</h2>
-                        <p>Upload a PDF statement, send it to your Vercel backend, and review the transactions before they enter your vault.</p>
-                    </div>
-                    <span class="pill">Beta • Off by default</span>
-                </div>
-                <div class="import-privacy-card">
-                    <h3>🔐 Privacy notice before you upload</h3>
-                    <p>This feature sends the selected PDF to your own Vercel Function, which then calls the OpenAI API using your server-side key. Manual entry and normal budgeting still stay local/offline. Only enable this if you are comfortable sending the statement to a third-party AI provider for parsing.</p>
-                    <ul class="guide-bullets compact-list">
-                        <li>The PDF is used to extract dates, descriptions, money in, money out, and suggested categories.</li>
-                        <li>Nothing is imported until you review and approve it.</li>
-                        <li>BudgetVault sends your local category rules next time so repeated merchants get categorised better.</li>
-                        <li>Your OpenAI key must stay in Vercel environment variables — never inside the browser app.</li>
-                    </ul>
-                </div>
-                <div class="form-inline goal-row import-settings-row">
-                    <label class="checkbox-row inline-check"><input type="checkbox" id="aiImportEnabledCheckbox"> Enable AI statement import on this device</label>
-                    <div class="input-group grow-field"><label for="aiImportEndpointInput">Vercel import endpoint</label><input type="url" id="aiImportEndpointInput" placeholder="/api/parse-statement or https://your-app.vercel.app/api/parse-statement"></div>
-                    <button id="saveAiImportSettingsBtn" type="button" class="secondary">Save import settings</button>
-                    <button id="testAiImportBtn" type="button" class="secondary">Test connection</button>
-                </div>
-                <div class="form-inline goal-row import-upload-row">
-                    <div class="input-group grow-field"><label for="statementPdfFile">Bank statement PDF</label><input type="file" id="statementPdfFile" accept="application/pdf,.pdf"></div>
-                    <label class="checkbox-row inline-check"><input type="checkbox" id="aiImportConsentCheckbox"> I understand this PDF will be sent to the configured AI import service</label>
-                    <button id="parseStatementBtn" type="button">🤖 Parse statement</button>
-                </div>
-                <p id="aiImportStatus" class="security-inline-note" aria-live="polite">Set your Vercel endpoint, enable the feature, then upload a PDF. Small PDFs work best.</p>
-            </section>
-
-            <section class="panel wide" id="aiImportReviewPanel" data-tab-panel="import">
-                <div class="section-header">
-                    <div>
-                        <h2>Review before import</h2>
-                        <p>Fix anything that looks wrong. BudgetVault learns merchant-to-category corrections for future uploads.</p>
-                    </div>
-                    <div class="install-actions">
-                        <button id="importSelectedTransactionsBtn" type="button">Add selected to vault</button>
-                        <button id="clearImportReviewBtn" type="button" class="secondary">Clear review</button>
-                    </div>
-                </div>
-                <div id="aiImportSummary" class="import-summary empty-state small">No parsed statement waiting for review.</div>
-                <div class="table-wrapper import-review-wrapper">
-                    <table id="aiImportReviewTable" class="import-review-table">
-                        <thead><tr><th>Use</th><th>Date</th><th>Type</th><th>Amount</th><th>Category / Source</th><th>Description</th><th>Confidence</th></tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="panel wide" data-tab-panel="import">
-                <div class="section-header">
-                    <div>
-                        <h2>Import learning</h2>
-                        <p>When you correct categories, BudgetVault stores simple local rules inside your encrypted vault.</p>
-                    </div>
-                    <button id="clearImportLearningBtn" type="button" class="secondary">Clear learned rules</button>
-                </div>
-                <div id="importLearningRules" class="category-chips"></div>
-                <p class="security-inline-note">Learning rules are sent with future statement uploads so the AI has your preferred categories. They are basic merchant keywords, not full statement copies.</p>
-            </section>
-
-            <section class="panel" data-tab-panel="plan">
-                <div class="section-header">
-                    <div>
-                        <h2>Budget cycle</h2>
-                        <p>Choose how often you plan your money.</p>
-                    </div>
-                </div>
-                <div class="form-inline goal-row">
-                    <div class="input-group"><label for="periodTypeSelect">Cycle length</label><select id="periodTypeSelect"><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option><option value="fourweekly">Every 4 weeks</option><option value="monthly">Monthly</option></select></div>
-                    <div class="input-group"><label for="periodStartInput">Cycle start date</label><input type="date" id="periodStartInput"></div>
-                    <button id="savePeriodSettings">Save Cycle</button>
-                </div>
-            </section>
-
-            <section class="panel" data-tab-panel="plan">
-                <div class="section-header">
-                    <div>
-                        <h2>Goals</h2>
-                        <p>Spending limit controls your budget. Savings target tracks money left over.</p>
-                    </div>
-                </div>
-                <div class="form-inline goal-row">
-                    <div class="input-group"><label for="budgetGoalInput">Spending limit</label><input type="number" id="budgetGoalInput" placeholder="Limit (£)" step="0.01" min="0" inputmode="decimal"></div>
-                    <div class="input-group"><label for="savingsGoalInput">Savings target</label><input type="number" id="savingsGoalInput" placeholder="Target (£)" step="0.01" min="0" inputmode="decimal"></div>
-                    <button id="setBudgetGoal">Save Goals</button>
-                </div>
-            </section>
-
-            
-
-            <section class="panel" data-tab-panel="plan">
-                <div class="section-header">
-                    <div>
-                        <h2>Budget planner</h2>
-                        <p>Carry unused category money forward and reopen the setup guide any time.</p>
-                    </div>
-                </div>
-                <div class="form-inline goal-row">
-                    <label class="checkbox-row inline-check"><input type="checkbox" id="rolloverEnabledCheckbox"> Roll category limits forward into the next cycle</label>
-                    <button id="savePlannerSettings" type="button">Save Planner</button>
-                    <button id="openOnboardingBtn" type="button" class="secondary">✨ Setup Guide</button>
-                </div>
-                <p class="security-inline-note">Rollover uses the previous cycle to add unused category limit, or reduce next cycle if you overspent.</p>
-            </section>
-
-            <section class="panel" data-tab-panel="security">
-                <div class="section-header">
-                    <div>
-                        <h2>Screen lock</h2>
-                        <p>Optional session PIN for PCs/tablets. It locks the open screen after inactivity.</p>
-                    </div>
-                </div>
-                <div class="form-inline goal-row">
-                    <div class="input-group"><label for="lockTimeoutSelect">Auto-lock after</label><select id="lockTimeoutSelect"><option value="1">1 minute</option><option value="5" selected>5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option></select></div>
-                    <label class="checkbox-row inline-check"><input type="checkbox" id="lockOnBackgroundCheckbox" checked> Lock when app goes to background</label>
-                    <button id="saveLockSettings" type="button">Save Lock</button>
-                </div>
-                <div class="form-inline goal-row">
-                    <div class="input-group"><label for="pinInput">Session PIN</label><input type="password" id="pinInput" placeholder="4+ digits" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
-                    <div class="input-group"><label for="pinConfirmInput">Confirm PIN</label><input type="password" id="pinConfirmInput" placeholder="Repeat PIN" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
-                    <button id="setPinPanelBtn" type="button" class="secondary">Set PIN</button>
-                    <button id="clearPinBtn" type="button" class="secondary">Remove PIN</button>
-                </div>
-                <p class="security-inline-note">The PIN only protects the currently open screen. It is never saved and is forgotten when the app closes.</p>
-            </section>
-
-            <section class="panel" data-tab-panel="plan">
-                <div class="section-header">
-                    <div>
-                        <h2>Categories</h2>
-                        <p>Use presets or add your own spending categories.</p>
-                    </div>
-                </div>
-                <div id="categoryChips" class="category-chips"></div>
-                <div class="form-inline category-tools">
-                    <div class="input-group"><label for="newCategoryInput">New category</label><input type="text" id="newCategoryInput" placeholder="e.g. Coffee, Kids, Pets"></div>
-                    <button id="addCategoryBtn" type="button">+ Add</button>
-                    <button id="resetCategoriesBtn" type="button" class="secondary">Restore Presets</button>
-                </div>
-                <div class="category-budget-header">
-                    <h3>Category limits</h3>
-                    <p>Set optional limits per category for this budget cycle.</p>
-                </div>
-                <div id="categoryBudgetList" class="category-budget-list"></div>
-            </section>
-
-            <section class="panel" id="reminderPanel" data-tab-panel="add">
-                <div class="section-header">
-                    <div>
-                        <h2>Bills & subscriptions</h2>
-                        <p>Recurring income, bills, and subscriptions due in the next 30 days.</p>
-                    </div>
-                </div>
-                <div class="reminders" id="reminderList">No reminders.</div>
-            </section>
-
-            <section class="panel wide" id="history" data-tab-panel="activity">
-                <div class="section-header">
-                    <div>
-                        <h2>Wages</h2>
-                        <p>Tap Date or Amount on desktop to sort.</p>
-                    </div>
-                </div>
-                <div class="table-wrapper">
-                    <table id="wageTable">
-                        <thead><tr>
-                            <th data-sort="date">Date <span class="sort-icon"></span></th>
-                            <th data-sort="amount">Amount <span class="sort-icon"></span></th>
-                            <th>Source</th><th>Repeat</th><th>Review</th><th></th>
-                        </tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="panel wide" id="insights" data-tab-panel="reports">
-                <div class="section-header">
-                    <div>
-                        <h2>Insights</h2>
-                        <p>Charts for the current cycle, recent cycles, and spending categories.</p>
-                    </div>
-                </div>
-                <div class="chart-grid">
-                    <div class="chart-card"><h3>Income vs spending</h3><div class="chart-container"><canvas id="balanceChart"></canvas></div></div>
-                    <div class="chart-card"><h3>Cashflow trend</h3><div class="chart-container"><canvas id="cashflowChart"></canvas></div></div>
-                    <div class="chart-card"><h3>Spending by category</h3><div class="chart-container"><canvas id="expenseChart"></canvas></div></div>
-                    <div class="chart-card"><h3>Category limits</h3><div class="chart-container"><canvas id="categoryBudgetChart"></canvas></div></div>
-                </div>
-            </section>
-
-            <section class="panel wide" data-tab-panel="activity">
-                <div class="section-header">
-                    <div>
-                        <h2>Expenses</h2>
-                        <p>Spending by category and transaction history.</p>
-                    </div>
-                    <div class="install-actions">
-                        <button id="markAllExpensesReviewedBtn" class="secondary" type="button">Mark all reviewed</button>
-                    </div>
-                </div>
-                <div class="table-wrapper">
-                    <table id="expenseTable">
-                        <thead><tr>
-                            <th data-sort="date">Date <span class="sort-icon"></span></th>
-                            <th data-sort="amount">Amount <span class="sort-icon"></span></th>
-                            <th>Category</th><th>Description</th><th>Repeat</th><th>Review</th><th></th>
-                        </tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </section>
-
-            
-
-            <section class="panel wide" id="reportsLab" data-tab-panel="reports">
-                <div class="section-header">
-                    <div>
-                        <h2>Reports lab</h2>
-                        <p>Compare cycles and custom date ranges to spot changes quickly.</p>
-                    </div>
-                </div>
-                <div class="reports-grid">
-                    <div class="security-card feature-card">
-                        <h3>Cycle compare</h3>
-                        <p class="card-intro">Current cycle versus the previous cycle for this budget.</p>
-                        <div id="cycleCompareCards" class="mini-dashboard"></div>
-                    </div>
-                    <div class="security-card feature-card">
-                        <h3>Custom range summary</h3>
-                        <div class="form-inline report-range-form">
-                            <div class="input-group"><label for="reportStartDate">Start date</label><input type="date" id="reportStartDate"></div>
-                            <div class="input-group"><label for="reportEndDate">End date</label><input type="date" id="reportEndDate"></div>
-                            <button id="runCustomReportBtn" type="button">Run report</button>
+                    <!-- Smart insights (rendered by app.js) -->
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0-4 10.5c.7.6 1 1 1 2V17h6v-1.5c0-1 .3-1.4 1-2A6 6 0 0 0 12 3Z"/><path d="M9 21h6"/></svg> What this means</span>
+                                <h2>Smart insights</h2>
+                                <p class="sub">Plain-language guidance based on this cycle's activity.</p>
+                            </div>
                         </div>
-                        <div id="customReportSummary" class="mini-dashboard"></div>
-                        <div class="chart-container"><canvas id="customReportChart"></canvas></div>
+                        <div id="insightCards" class="cards insight-grid"></div>
                     </div>
-                </div>
-            </section>
 
-            <section class="panel wide" id="guideHub" data-tab-panel="reports">
-                <div class="section-header">
-                    <div>
-                        <h2>How to use</h2>
-                        <p>A quick guide for first-time setup, daily use, and safer backups.</p>
-                    </div>
-                    <div class="install-actions">
-                        <button id="openGuideModalBtn" class="secondary" type="button">Open full guide</button>
-                    </div>
-                </div>
-                <div class="guide-grid">
-                    <div class="security-card feature-card">
-                        <h3>1. Set up your budget</h3>
-                        <ol class="guide-list">
-                            <li>Pick a cycle: weekly, bi-weekly, every 4 weeks, or monthly.</li>
-                            <li>Set a spending limit for the cycle.</li>
-                            <li>Set a savings target if you want to build cash.</li>
-                            <li>Add or trim categories so they match real life.</li>
-                        </ol>
-                    </div>
-                    <div class="security-card feature-card">
-                        <h3>2. Use it day to day</h3>
-                        <ol class="guide-list">
-                            <li>Add income when you are paid.</li>
-                            <li>Add expenses as they happen or when bills land.</li>
-                            <li>Review transactions and fix categories when needed.</li>
-                            <li>Check Money check and Reports lab before the cycle ends.</li>
-                        </ol>
-                    </div>
-                    <div class="security-card feature-card">
-                        <h3>3. Stay safe</h3>
-                        <ol class="guide-list">
-                            <li>Use a strong unique password or 4-word passphrase.</li>
-                            <li>Turn on the timeout PIN if the app may stay open.</li>
-                            <li>Prefer encrypted backups.</li>
-                            <li>Delete plain JSON/CSV exports after use.</li>
-                        </ol>
-                    </div>
-                </div>
-                <div class="changelog-preview">
-                    <div>
-                        <span class="eyebrow">Latest changes</span>
-                        <h3>What changed in this build</h3>
-                    </div>
-                    <ul id="changelogPreviewList" class="guide-bullets"></ul>
-                </div>
-            </section>
+                    <!-- Find transactions -->
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg> Find</span>
+                                <h2>Search this vault</h2>
+                                <p class="sub">Filter what feeds your dashboard, charts and reports.</p>
+                            </div>
+                            <div class="head-actions">
+                                <button id="yearlyReportBtn" class="secondary btn-sm" type="button">Yearly report</button>
+                            </div>
+                        </div>
+                        <div class="filter-grid">
+                            <label>View
+                                <select id="viewRangeSelect">
+                                    <option value="current">This cycle</option>
+                                    <option value="all">All time</option>
+                                    <option value="month">A specific month</option>
+                                </select>
+                            </label>
+                            <label>Month
+                                <input type="month" id="filterMonth">
+                            </label>
+                            <label class="grow">Search
+                                <input type="search" id="searchBox" placeholder="Search description, category or source…">
+                            </label>
+                            <div class="filter-actions">
+                                <button id="applyFilter" class="secondary btn-sm" type="button">Apply</button>
+                                <button id="resetFilter" class="ghost btn-sm" type="button">Reset</button>
+                            </div>
+                        </div>
 
-            <section class="panel wide security-panel" id="security" data-tab-panel="security">
-                <div class="section-header">
-                    <div>
-                        <h2>Security hub</h2>
-                        <p>Everything important for keeping your budget private on mobile, tablet, and desktop.</p>
+                        <div id="yearlyReport" class="hidden yearly-report">
+                            <div class="section-head compact">
+                                <div>
+                                    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V8M10 20V4M16 20v-9M22 20H2"/></svg> Year in review</span>
+                                    <h3>Yearly report</h3>
+                                </div>
+                                <div class="head-actions">
+                                    <label class="inline-field">Year
+                                        <select id="yearSelect"></select>
+                                    </label>
+                                    <button id="closeYearlyBtn" class="ghost btn-sm" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="chart-card"><canvas id="yearlyChart" class="report-canvas"></canvas></div>
+                            <div id="yearlySummary" class="report-summary"></div>
+                        </div>
                     </div>
-                </div>
-                <div class="security-hero">
-                    <div class="security-hero-copy">
-                        <span class="eyebrow">Built for real devices</span>
-                        <h3>Encrypted at rest, simple while open.</h3>
-                        <p>Your password protects the encrypted data when the app opens. The optional PIN only locks the current screen after inactivity, which is useful when the app is left open on a phone, tablet, or PC.</p>
-                    </div>
-                    <div class="security-chip-grid" aria-label="Security summary">
-                        <span class="status-chip">🔐 Password required on reopen</span>
-                        <span class="status-chip">🛡️ Optional timeout PIN</span>
-                        <span class="status-chip">💾 Encrypted backup available</span>
-                        <span class="status-chip">📴 Offline-first PWA</span>
-                    </div>
-                </div>
 
-                <div class="security-grid security-grid-polished">
-                    <div class="security-card feature-card">
-                        <h3>Strong password tips</h3>
-                        <ul class="security-list">
-                            <li>Use 4 random words, or 16+ mixed characters.</li>
-                            <li>Do not reuse a password from email, banking, or social apps.</li>
-                            <li>Store it in a password manager if possible.</li>
-                            <li>Encrypted backups are safer than plain exports.</li>
+                </section>
+
+                <!-- ===================== ADD MONEY ===================== -->
+                <section class="panels tab-hidden" data-tab-panel="add">
+
+                    <div class="cards two-col">
+                        <div class="panel">
+                            <div class="section-head">
+                                <div>
+                                    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Money in</span>
+                                    <h2>Add income</h2>
+                                    <p class="sub">Wages, transfers or any money arriving.</p>
+                                </div>
+                            </div>
+                            <form id="wageForm" autocomplete="off">
+                                <div class="form-row two">
+                                    <label>Date<input type="date" id="wageDate" required></label>
+                                    <label>Amount (£)<input type="number" id="wageAmount" inputmode="decimal" step="0.01" min="0" placeholder="0.00" required></label>
+                                </div>
+                                <label>Source<input type="text" id="wageSource" placeholder="e.g. Salary, Side gig, Refund"></label>
+                                <label>Repeats
+                                    <select id="wageRecurrence">
+                                        <option value="none">One-off</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="biweekly">Bi-weekly</option>
+                                        <option value="fourweekly">Every 4 weeks</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                                </label>
+                                <button type="submit">Add income</button>
+                            </form>
+                        </div>
+
+                        <div class="panel">
+                            <div class="section-head">
+                                <div>
+                                    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg> Money out</span>
+                                    <h2>Add expense</h2>
+                                    <p class="sub">Tip: use the category <b>Savings</b> to move money into savings without it counting against your spending cap.</p>
+                                </div>
+                            </div>
+                            <form id="expenseForm" autocomplete="off">
+                                <div class="form-row two">
+                                    <label>Date<input type="date" id="expenseDate" required></label>
+                                    <label>Amount (£)<input type="number" id="expenseAmount" inputmode="decimal" step="0.01" min="0" placeholder="0.00" required></label>
+                                </div>
+                                <div class="form-row two">
+                                    <label>Category<select id="expenseCategory"></select></label>
+                                    <label>Repeats
+                                        <select id="expenseRecurrence">
+                                            <option value="none">One-off</option>
+                                            <option value="weekly">Weekly</option>
+                                            <option value="biweekly">Bi-weekly</option>
+                                            <option value="fourweekly">Every 4 weeks</option>
+                                            <option value="monthly">Monthly</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <label>Description<input type="text" id="expenseDesc" placeholder="e.g. Weekly shop, Rent, Transfer to ISA"></label>
+                                <button type="submit">Add expense</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9Z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg> Upcoming</span>
+                                <h2>Recurring reminders</h2>
+                                <p class="sub">Repeating income and bills you've marked, with their next dates.</p>
+                            </div>
+                        </div>
+                        <div id="reminderList" class="reminders"></div>
+                    </div>
+
+                </section>
+
+                <!-- ===================== AI IMPORT ===================== -->
+                <section class="panels tab-hidden" data-tab-panel="import" id="aiImport">
+
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z"/></svg> Optional</span>
+                                <h2>Import from a bank statement</h2>
+                                <p class="sub">Turn a PDF statement into draft transactions. This is the only feature that can send data off your device — and only when you switch it on and confirm each upload.</p>
+                            </div>
+                        </div>
+                        <div class="import-privacy-card">
+                            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg> How your data is handled</h3>
+                            <ul class="ticked">
+                                <li>Off by default. Manual budgeting always stays fully offline.</li>
+                                <li>When enabled, the PDF is sent to <b>your own</b> parsing endpoint to extract rows.</li>
+                                <li>Nothing imports automatically — every row lands in a review table first.</li>
+                                <li>You set the endpoint, so you decide where parsing happens.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="cards two-col">
+                        <div class="panel">
+                            <div class="section-head compact">
+                                <div>
+                                    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8M4.6 9a1.6 1.6 0 0 0-.3-1.8"/></svg> Setup</span>
+                                    <h3>Connection</h3>
+                                </div>
+                            </div>
+                            <label class="check-row">
+                                <input type="checkbox" id="aiImportEnabledCheckbox">
+                                <span><b>Enable statement import</b><small>Allows uploads to be sent to your endpoint for parsing.</small></span>
+                            </label>
+                            <label>Parsing endpoint URL
+                                <input type="url" id="aiImportEndpointInput" placeholder="https://your-app.vercel.app/api/parse-statement" autocomplete="off" spellcheck="false">
+                                <small class="field-note">Defaults to this app's own <span class="mono">/api/parse-statement</span> if left blank.</small>
+                            </label>
+                            <label>Shared secret <span class="muted">(optional)</span>
+                                <input type="password" id="aiImportSecretInput" placeholder="Matches IMPORT_SHARED_SECRET on your server" autocomplete="off" spellcheck="false">
+                                <small class="field-note">If your server sets <span class="mono">IMPORT_SHARED_SECRET</span>, put the same value here so only you can use the endpoint.</small>
+                            </label>
+                            <div class="btn-row">
+                                <button id="saveAiImportSettingsBtn" class="secondary" type="button">Save settings</button>
+                                <button id="testAiImportBtn" class="ghost" type="button">Test connection</button>
+                            </div>
+                        </div>
+
+                        <div class="panel">
+                            <div class="section-head compact">
+                                <div>
+                                    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M8 8l4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Upload</span>
+                                    <h3>Statement PDF</h3>
+                                </div>
+                            </div>
+                            <label>Choose a PDF statement
+                                <input type="file" id="statementPdfFile" accept="application/pdf,.pdf">
+                            </label>
+                            <label class="check-row">
+                                <input type="checkbox" id="aiImportConsentCheckbox">
+                                <span><b>I understand this upload will be sent for parsing</b><small>Required each time before a statement is processed.</small></span>
+                            </label>
+                            <button id="parseStatementBtn" type="button">Parse statement</button>
+                            <div id="aiImportStatus" class="inline-note" role="status" aria-live="polite"></div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head compact">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg> Securing your endpoint</span>
+                                <h3>Risks &amp; how to lock it down</h3>
+                                <p class="sub">The parsing endpoint runs on a public URL and calls OpenAI with your key. Anyone who learns the URL could otherwise run up your bill. Reduce that risk:</p>
+                            </div>
+                        </div>
+                        <ul class="security-points tight">
+                            <li><b>Restrict the origin.</b> Set <code>ALLOWED_ORIGIN</code> on your server to your app's address. Cross-site browser calls are then rejected.</li>
+                            <li><b>Add a shared secret.</b> Set <code>IMPORT_SHARED_SECRET</code> on your server and the same value in the field above. Requests without it (including curl) get a 403.</li>
+                            <li><b>Cap spending.</b> Set a hard monthly usage limit in your OpenAI account — the reliable backstop, since any public endpoint can be probed.</li>
+                            <li><b>Keep the URL private.</b> Don't post your endpoint publicly; treat it like a key.</li>
+                            <li><b>What's sent:</b> only the statement PDF and your categories — to <em>your</em> server, then OpenAI. It isn't logged or stored by the endpoint, and your encrypted budget is never sent.</li>
                         </ul>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg> Review</span>
+                                <h2>Check before importing</h2>
+                                <p class="sub" id="aiImportSummary">No parsed statement waiting for review.</p>
+                            </div>
+                        </div>
+
+                        <div class="import-review-tools">
+                            <div class="tool-group">
+                                <span class="tool-label">Select</span>
+                                <button id="selectSafeImportBtn" class="ghost btn-sm" type="button">High confidence</button>
+                                <button id="selectLowConfidenceBtn" class="ghost btn-sm" type="button">Needs review</button>
+                                <button id="selectAllImportBtn" class="ghost btn-sm" type="button">All</button>
+                            </div>
+                            <div class="tool-group">
+                                <span class="tool-label">Set type</span>
+                                <select id="bulkImportTypeSelect" class="btn-sm-select">
+                                    <option value="expense">Money out</option>
+                                    <option value="income">Money in</option>
+                                </select>
+                                <button id="applyImportTypeBtn" class="ghost btn-sm" type="button">Apply</button>
+                                <button id="sortImportConfidenceBtn" class="ghost btn-sm" type="button">Sort by confidence</button>
+                            </div>
+                        </div>
+
+                        <div class="table-wrap import-table">
+                            <table id="aiImportReviewTable">
+                                <thead>
+                                    <tr>
+                                        <th>Use</th><th>Date</th><th>Type</th><th>Amount</th><th>Category / Source</th><th>Description</th><th>Confidence</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+
+                        <div class="btn-row end">
+                            <button id="clearImportReviewBtn" class="ghost" type="button">Discard</button>
+                            <button id="importSelectedTransactionsBtn" type="button">Import selected</button>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head compact">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0-4 10.5c.7.6 1 1 1 2V17h6v-1.5c0-1 .3-1.4 1-2A6 6 0 0 0 12 3Z"/></svg> Learning</span>
+                                <h3>Remembered categories</h3>
+                                <p class="sub">When you re-categorise an imported row, BudgetVault remembers it for next time — stored locally.</p>
+                            </div>
+                            <div class="head-actions">
+                                <button id="clearImportLearningBtn" class="ghost btn-sm" type="button">Clear rules</button>
+                            </div>
+                        </div>
+                        <div id="importLearningRules" class="rule-list"></div>
+                    </div>
+
+                </section>
+
+                <!-- ===================== PLAN ===================== -->
+                <section class="panels tab-hidden" data-tab-panel="plan">
+
+                    <div class="cards two-col">
+                        <div class="panel">
+                            <div class="section-head compact">
+                                <div>
+                                    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg> Cycle</span>
+                                    <h3>Pay cycle</h3>
+                                    <p class="sub">How often you're paid sets every "this cycle" figure.</p>
+                                </div>
+                            </div>
+                            <div class="form-row two">
+                                <label>Cycle length
+                                    <select id="periodTypeSelect">
+                                        <option value="weekly">Weekly</option>
+                                        <option value="biweekly">Bi-weekly</option>
+                                        <option value="fourweekly">Every 4 weeks</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                                </label>
+                                <label>Cycle start<input type="date" id="periodStartInput"></label>
+                            </div>
+                            <button id="savePeriodSettings" class="secondary" type="button">Save cycle</button>
+                        </div>
+
+                        <div class="panel">
+                            <div class="section-head compact">
+                                <div>
+                                    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M5 5h14M5 19h14"/></svg> Targets</span>
+                                    <h3>Spending &amp; savings</h3>
+                                    <p class="sub">Set a spending cap and a savings target for each cycle.</p>
+                                </div>
+                            </div>
+                            <div class="form-row two">
+                                <label>Expected income (£)<input type="number" id="plannedIncomeInput" inputmode="decimal" step="0.01" min="0" placeholder="0.00"></label>
+                                <label>Spending cap (£)<input type="number" id="budgetGoalInput" inputmode="decimal" step="0.01" min="0" placeholder="0.00"></label>
+                            </div>
+                            <div class="form-row two">
+                                <label>Savings target (£)<input type="number" id="savingsGoalInput" inputmode="decimal" step="0.01" min="0" placeholder="0.00"></label>
+                                <label>Already saved (£)<input type="number" id="savingsBalanceInput" inputmode="decimal" step="0.01" min="0" placeholder="0.00"></label>
+                            </div>
+                            <div class="btn-row">
+                                <button id="setBudgetGoal" type="button">Save targets</button>
+                                <button id="applySuggestedCapBtn" class="ghost" type="button">Suggest a cap</button>
+                            </div>
+                            <small class="field-note">A suggested cap is your expected income minus your savings target.</small>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18"/></svg> Pots</span>
+                                <h2>Category limits</h2>
+                                <p class="sub">Give each category its own slice. Leftovers can roll into the next cycle.</p>
+                            </div>
+                            <div class="head-actions">
+                                <button id="openOnboardingBtn" class="ghost btn-sm" type="button">Setup wizard</button>
+                            </div>
+                        </div>
+
+                        <label class="check-row">
+                            <input type="checkbox" id="rolloverEnabledCheckbox">
+                            <span><b>Roll unspent category money into next cycle</b><small>Anything left under a category's limit is added to its next-cycle limit.</small></span>
+                        </label>
+
+                        <div class="subhead">Your categories</div>
+                        <div id="categoryChips" class="chip-cloud"></div>
+                        <div class="add-category-row">
+                            <input type="text" id="newCategoryInput" placeholder="Add a category…" maxlength="40">
+                            <button id="addCategoryBtn" class="secondary btn-sm" type="button">Add</button>
+                            <button id="resetCategoriesBtn" class="ghost btn-sm" type="button">Reset</button>
+                        </div>
+
+                        <div class="subhead">Per-category limits</div>
+                        <div id="categoryBudgetList" class="limit-list"></div>
+
+                        <div class="btn-row">
+                            <button id="savePlannerSettings" type="button">Save category plan</button>
+                        </div>
+                    </div>
+
+                </section>
+
+                <!-- ===================== ACTIVITY ===================== -->
+                <section class="panels tab-hidden" data-tab-panel="activity">
+
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="3.5" cy="6" r="1.3"/><circle cx="3.5" cy="12" r="1.3"/><circle cx="3.5" cy="18" r="1.3"/></svg> Ledger</span>
+                                <h2>Activity</h2>
+                                <p class="sub">Everything in this vault. Mark items reviewed to keep your records tidy.</p>
+                            </div>
+                            <div class="head-actions">
+                                <label class="inline-field">Show
+                                    <select id="activityFilterSelect">
+                                        <option value="all">Everything</option>
+                                        <option value="needs-review">Needs review</option>
+                                        <option value="reviewed">Reviewed</option>
+                                        <option value="recurring">Recurring only</option>
+                                        <option value="income">Income only</option>
+                                        <option value="expenses">Expenses only</option>
+                                    </select>
+                                </label>
+                                <label class="inline-field">Rows
+                                    <select id="activityLimitSelect">
+                                        <option value="25">25</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                        <option value="250">250</option>
+                                        <option value="all">All</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head compact">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> To review</span>
+                                <h3>Review queue</h3>
+                                <p class="sub">New and imported items waiting for a quick check.</p>
+                            </div>
+                            <div class="head-actions">
+                                <button id="markAllIncomeReviewedBtn" class="ghost btn-sm" type="button">Income reviewed</button>
+                                <button id="markAllExpensesReviewedBtn" class="ghost btn-sm" type="button">Expenses reviewed</button>
+                            </div>
+                        </div>
+                        <div id="reviewQueue" class="review-queue"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head compact">
+                            <div>
+                                <span class="eyebrow in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg> Money in</span>
+                                <h3>Income</h3>
+                            </div>
+                        </div>
+                        <div class="table-wrap">
+                            <table id="wageTable">
+                                <thead>
+                                    <tr>
+                                        <th data-sort="date" class="sortable">Date <span class="sort-icon"></span></th>
+                                        <th data-sort="amount" class="sortable">Amount <span class="sort-icon"></span></th>
+                                        <th>Source</th>
+                                        <th>Repeat</th>
+                                        <th>Review</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head compact">
+                            <div>
+                                <span class="eyebrow out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg> Money out</span>
+                                <h3>Expenses</h3>
+                            </div>
+                        </div>
+                        <div class="table-wrap">
+                            <table id="expenseTable">
+                                <thead>
+                                    <tr>
+                                        <th data-sort="date" class="sortable">Date <span class="sort-icon"></span></th>
+                                        <th data-sort="amount" class="sortable">Amount <span class="sort-icon"></span></th>
+                                        <th>Category</th>
+                                        <th>Description</th>
+                                        <th>Repeat</th>
+                                        <th>Review</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </section>
+
+                <!-- ===================== REPORTS ===================== -->
+                <section class="panels tab-hidden" data-tab-panel="reports">
+
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg> Insights</span>
+                                <h2>Charts</h2>
+                                <p class="sub">Visuals for the current view. Drawn locally — no data leaves your device.</p>
+                            </div>
+                        </div>
+                        <div class="chart-grid">
+                            <div class="chart-card"><h3>Balance over time</h3><canvas id="balanceChart"></canvas></div>
+                            <div class="chart-card"><h3>Cash flow</h3><canvas id="cashflowChart"></canvas></div>
+                            <div class="chart-card"><h3>Spending by category</h3><canvas id="expenseChart"></canvas></div>
+                            <div class="chart-card"><h3>Category limits vs spent</h3><canvas id="categoryBudgetChart"></canvas></div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg> Lab</span>
+                                <h2>Custom report</h2>
+                                <p class="sub">Compare cycles or build a report for any date range.</p>
+                            </div>
+                        </div>
+                        <div id="cycleCompareCards" class="cards compare-cards"></div>
+                        <div class="report-controls">
+                            <label>From<input type="date" id="reportStartDate"></label>
+                            <label>To<input type="date" id="reportEndDate"></label>
+                            <button id="runCustomReportBtn" class="secondary" type="button">Run report</button>
+                        </div>
+                        <div id="customReportSummary" class="report-summary"></div>
+                        <div class="chart-card"><canvas id="customReportChart" class="report-canvas"></canvas></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-head compact">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2V5Z"/><path d="M9 8h7M9 12h5"/></svg> Help</span>
+                                <h3>Guides &amp; tips</h3>
+                                <p class="sub">Walkthroughs for cycles, savings, category limits and import.</p>
+                            </div>
+                            <div class="head-actions">
+                                <button id="openGuideModalBtn" class="secondary btn-sm" type="button">Open guide</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </section>
+
+                <!-- ===================== SECURITY ===================== -->
+                <section class="panels tab-hidden" data-tab-panel="security" id="security">
+
+                    <div class="panel security-card">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg> How your security works</span>
+                                <h2>Your data, and how it's protected</h2>
+                                <p class="sub">A plain-language summary so you can make good choices.</p>
+                            </div>
+                        </div>
+                        <ul class="security-points">
+                            <li><b>Encrypted on this device.</b> Your budget is stored using AES-256-GCM. The key is stretched from your password with PBKDF2-SHA256 (1,000,000 rounds). Nothing is sent to any server in normal use.</li>
+                            <li><b>Your password is everything.</b> There is no recovery and no backdoor. If someone copies the encrypted file from your device, the <em>only</em> thing standing between them and your data is how hard your password is to guess.</li>
+                            <li><b>The real threat is offline guessing.</b> An attacker with the file can try millions of common passwords on their own hardware. A word plus a year (like “Football2019”) can fall in seconds. That class of password is now blocked at setup.</li>
+                            <li><b>Pick 4 random words.</b> Something like <code>otter lantern copper meadow</code> is easy to remember and would take centuries to crack. Avoid names, dates, and anything reused from another account.</li>
+                            <li><b>The PIN is only a screen lock.</b> It hides the open screen on this device. It does <em>not</em> add encryption — your password is still what protects the data when the app is reopened.</li>
+                            <li><b>Want it un-crackable even if the file is stolen?</b> Turn on <b>online high-security mode</b> below. Your password alone can no longer unlock the file — your own server must take part in every attempt.</li>
+                        </ul>
+                    </div>
+
+                    <div class="cards two-col">
+                        <div class="panel security-card">
+                            <div class="section-head compact">
+                                <div>
+                                    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Screen lock</span>
+                                    <h3>PIN &amp; auto-lock</h3>
+                                    <p class="sub">A PIN locks the open screen. Your password still guards the encrypted data on reopen.</p>
+                                </div>
+                            </div>
+                            <div class="form-row two">
+                                <label>Auto-lock after
+                                    <select id="lockTimeoutSelect">
+                                        <option value="1">1 minute</option>
+                                        <option value="2">2 minutes</option>
+                                        <option value="5">5 minutes</option>
+                                        <option value="10">10 minutes</option>
+                                        <option value="15">15 minutes</option>
+                                        <option value="30">30 minutes</option>
+                                    </select>
+                                </label>
+                                <label class="check-row tall">
+                                    <input type="checkbox" id="lockOnBackgroundCheckbox">
+                                    <span><b>Lock when backgrounded</b></span>
+                                </label>
+                            </div>
+                            <button id="saveLockSettings" class="secondary" type="button">Save lock settings</button>
+                            <hr class="soft">
+                            <div class="form-row two">
+                                <label>New PIN<input type="password" id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="4–8 digits" autocomplete="new-password"></label>
+                                <label>Confirm PIN<input type="password" id="pinConfirmInput" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="Re-enter PIN" autocomplete="new-password"></label>
+                            </div>
+                            <div class="btn-row">
+                                <button id="setPinPanelBtn" type="button">Set PIN</button>
+                                <button id="clearPinBtn" class="ghost" type="button">Remove PIN</button>
+                            </div>
+                        </div>
+
+                        <div class="panel security-card">
+                            <div class="section-head compact">
+                                <div>
+                                    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 4 5v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V5l-8-3Z"/><path d="M12 8v4"/><circle cx="12" cy="15" r="1"/></svg> Encryption</span>
+                                    <h3>Change password</h3>
+                                    <p class="sub">Re-encrypts all data with a new password. There is no recovery if it's lost.</p>
+                                </div>
+                            </div>
+                            <label>Current password<input type="password" id="changePasswordCurrent" autocomplete="current-password" placeholder="Current password"></label>
+                            <label>New password<input type="password" id="changePasswordNew" autocomplete="new-password" placeholder="New password"></label>
+                            <label>Confirm new password<input type="password" id="changePasswordConfirm" autocomplete="new-password" placeholder="Repeat new password"></label>
+                            <div id="changePasswordStrengthWrap" class="strength-wrap hidden">
+                                <div class="strength-header"><strong>Strength</strong><span id="changePasswordStrengthText"></span></div>
+                                <div class="strength-meter" aria-hidden="true"><span id="changePasswordStrengthFill"></span></div>
+                            </div>
+                            <button id="changePasswordBtn" type="button">Update password</button>
+                        </div>
+                    </div>
+
+                    <div class="panel security-card">
+                        <div class="section-head compact">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 4 5v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V5l-8-3Z"/><path d="M2 12h20"/></svg> Advanced encryption</span>
+                                <h3>Online high-security mode</h3>
+                                <p class="sub">Optional. Makes the encrypted file impossible to brute-force offline by requiring your own server to take part in unlocking.</p>
+                            </div>
+                        </div>
                         <div class="security-callout">
-                            <strong>Best choice</strong>
-                            <p>Use a long passphrase you can remember but other people cannot guess.</p>
+                            <b>How it works.</b> Your key becomes <code>HMAC(server&nbsp;secret, your&nbsp;password&nbsp;hash)</code>. The server never sees your password or your data and can't decrypt anything — but because its secret is needed for every guess, a stolen file alone is useless.
                         </div>
-                    </div>
-
-                    <div class="security-card feature-card">
-                        <h3>Change password</h3>
-                        <p class="card-intro">Update it any time. Pick something long, unique, and not used anywhere else.</p>
-                        <div class="form-stack security-form">
-                            <div class="input-group"><label for="changePasswordCurrent">Current password</label><input type="password" id="changePasswordCurrent" autocomplete="current-password"></div>
-                            <div class="input-group"><label for="changePasswordNew">New password</label><input type="password" id="changePasswordNew" autocomplete="new-password"></div>
-                            <div class="input-group"><label for="changePasswordConfirm">Confirm new password</label><input type="password" id="changePasswordConfirm" autocomplete="new-password"></div>
-                        </div>
-                        <div class="strength-wrap compact" id="changePasswordStrengthWrap">
-                            <div class="strength-header"><strong>Password strength</strong><span id="changePasswordStrengthText">Use a long unique password or passphrase.</span></div>
-                            <div class="strength-meter" aria-hidden="true"><span id="changePasswordStrengthFill"></span></div>
-                        </div>
-                        <button id="changePasswordBtn" class="secondary" type="button">🔑 Update Password</button>
-                    </div>
-
-                    <div class="security-card feature-card">
-                        <h3>Reminder privacy</h3>
-                        <p class="card-intro">Choose how much information can appear outside the app on banners, lock screens, desktops, or watches.</p>
-                        <label class="checkbox-row"><input type="checkbox" id="enableNotificationsCheckbox"> Enable reminder notifications</label>
-                        <label class="checkbox-row"><input type="checkbox" id="hideNotificationAmountsCheckbox" checked> Hide amounts in notifications</label>
-                        <small class="field-note">Amounts are hidden by default because notifications can appear where other people may see them.</small>
-                        <button id="savePrivacySettings" type="button">Save Privacy Settings</button>
-                    </div>
-
-                    <div class="security-card feature-card">
-                        <h3>Device checklist</h3>
-                        <ul class="security-list compact-list">
-                            <li>Install the app only on devices you trust.</li>
-                            <li>Use the timeout PIN if you may leave the screen open.</li>
-                            <li>Lock your phone or computer with Face ID, Touch ID, or a device passcode.</li>
-                            <li>Delete plain exports after sending or importing them.</li>
+                        <ul class="security-points tight">
+                            <li><b>Trade-off:</b> unlocking needs your server reachable. After you unlock, normal edits still save offline.</li>
+                            <li><b>No recovery:</b> if the server secret (<code>KDF_PEPPER</code>) is lost or changed, the data can't be decrypted. Keep a plain backup somewhere safe first.</li>
+                            <li><b>Setup:</b> deploy <code>/api/pepper</code> and set a long random <code>KDF_PEPPER</code> on your server (see the README).</li>
                         </ul>
-                        <p class="security-inline-note">This app protects your data well, but a compromised device or shared browser account can still put it at risk.</p>
-                    </div>
-                </div>
-            </section>
-
-            <section class="panel wide data-panel" id="settings" data-tab-panel="security">
-                <div class="section-header">
-                    <div>
-                        <h2>Backups & data</h2>
-                        <p>Use encrypted backups for safety. Plain files are for compatibility, not privacy.</p>
-                    </div>
-                </div>
-
-                <div class="backup-spotlight">
-                    <div class="backup-spotlight-copy">
-                        <span class="eyebrow">Safest option</span>
-                        <h3>Encrypted backup</h3>
-                        <p>Creates a password-protected copy of your app data. This is the best choice before major edits, device changes, or testing imports.</p>
-                    </div>
-                    <div class="backup-spotlight-actions">
-                        <button id="exportEncryptedBackup">🔐 Export Encrypted Backup</button>
-                        <button id="importJSON" class="secondary">📂 Import Backup</button>
-                        <input type="file" id="importFile" accept=".json,application/json" hidden>
-                    </div>
-                </div>
-
-                <div class="data-grid">
-                    <div class="security-card feature-card">
-                        <h3>Update channel</h3>
-                        <p class="card-intro">This app checks a small published metadata file so new GitHub Pages deployments can show release notes and refresh prompts.</p>
-                        <div class="backup-checklist compact-checklist">
-                            <div class="checklist-item"><strong>Current version</strong><span id="currentVersionText">v1.3.0</span></div>
-                            <div class="checklist-item"><strong>Published build</strong><span id="remoteVersionText">Checking…</span></div>
-                            <div class="checklist-item"><strong>How it works</strong><span>When you push an updated build to GitHub Pages, app-meta.json changes and the app can spot it.</span></div>
+                        <label class="check-row tall">
+                            <input type="checkbox" id="onlineModeToggle">
+                            <span><b>Use online high-security mode</b><small>Re-encrypts everything when you apply the change.</small></span>
+                        </label>
+                        <label>Key server endpoint
+                            <input type="url" id="pepperEndpointInput" placeholder="https://your-app.vercel.app/api/pepper" autocomplete="off" spellcheck="false">
+                        </label>
+                        <div class="btn-row">
+                            <button id="applyOnlineModeBtn" type="button">Apply encryption mode</button>
                         </div>
-                        <button id="checkUpdatesNowBtn" class="secondary" type="button">Check for updates now</button>
+                        <p id="onlineModeStatus" class="field-note" data-state=""></p>
                     </div>
-                    <div class="security-card feature-card warning-card">
-                        <h3>Plain file exports</h3>
-                        <p class="card-intro">Use these only when another tool needs readable files.</p>
-                        <div class="export-group export-stack">
-                            <button id="exportJSON" class="secondary">⚠️ Export Plain JSON</button>
-                            <button id="exportCSV" class="secondary">📊 Export CSV</button>
+
+                    <div class="panel security-card">
+                        <div class="section-head compact">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9Z"/></svg> Reminders</span>
+                                <h3>Notifications</h3>
+                                <p class="sub">Optional local reminders for recurring bills. You control what they show.</p>
+                            </div>
                         </div>
-                        <p class="security-inline-note">These files can be opened by other apps and may sync to cloud storage automatically.</p>
+                        <label class="check-row">
+                            <input type="checkbox" id="enableNotificationsCheckbox">
+                            <span><b>Enable reminder notifications</b><small>Uses your browser's notifications, on this device only.</small></span>
+                        </label>
+                        <label class="check-row">
+                            <input type="checkbox" id="hideNotificationAmountsCheckbox">
+                            <span><b>Hide amounts in notifications</b><small>Shows the bill name without the figure on your lock screen.</small></span>
+                        </label>
+                        <button id="savePrivacySettings" class="secondary" type="button">Save notification settings</button>
                     </div>
 
-                    <div class="security-card feature-card danger-card">
-                        <h3>Danger zone</h3>
-                        <p class="card-intro">Clear everything only when you are sure your backups are safe and tested.</p>
-                        <button id="clearDataBtn" class="danger">🗑 Clear All Data</button>
-                        <p class="security-inline-note">This removes the local encrypted budgets from this device.</p>
+                    <div class="panel security-card backup-spotlight" id="settings">
+                        <div class="section-head">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg> Backups &amp; data</span>
+                                <h2>Keep a copy</h2>
+                                <p class="sub">Because everything lives on this device, an encrypted backup is your safety net.</p>
+                            </div>
+                        </div>
+
+                        <div class="spotlight-row">
+                            <div class="spotlight-copy">
+                                <b>Encrypted backup</b>
+                                <span>One file, still locked with your password. Safe to store anywhere.</span>
+                            </div>
+                            <button id="exportEncryptedBackup" type="button">Download encrypted backup</button>
+                        </div>
+
+                        <div class="checklist">
+                            <div class="checklist-item"><span class="ci-dot"></span> Back up after big changes</div>
+                            <div class="checklist-item"><span class="ci-dot"></span> Keep one copy off this device</div>
+                            <div class="checklist-item"><span class="ci-dot"></span> Remember: lost password = lost data</div>
+                        </div>
+
+                        <div class="subhead">Restore &amp; exports</div>
+                        <div class="data-actions">
+                            <button id="importJSON" class="secondary" type="button">Restore from backup</button>
+                            <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+                            <button id="exportJSON" class="secondary" type="button">Export JSON (plain)</button>
+                            <button id="exportCSV" class="secondary" type="button">Export CSV</button>
+                            <button id="clearDataBtn" class="danger" type="button">Erase all data</button>
+                        </div>
+                        <small class="field-note">Plain JSON and CSV are <b>not</b> encrypted — only use them if you understand the risk.</small>
                     </div>
-                </div>
 
-                <div class="backup-checklist">
-                    <div class="checklist-item"><strong>Before exporting</strong><span>Check whether you really need a readable file, or whether encrypted backup is enough.</span></div>
-                    <div class="checklist-item"><strong>After exporting</strong><span>Move the file somewhere safe, then delete it from Downloads, Files, or Desktop if it is plain JSON or CSV.</span></div>
-                    <div class="checklist-item"><strong>Before clearing data</strong><span>Test that your backup imports correctly on this device or another trusted device.</span></div>
-                </div>
-            </section>
-        </main>
+                    <div class="panel security-card">
+                        <div class="section-head compact">
+                            <div>
+                                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Version</span>
+                                <h3>Updates</h3>
+                            </div>
+                            <div class="head-actions">
+                                <button id="checkUpdatesNowBtn" class="ghost btn-sm" type="button">Check now</button>
+                            </div>
+                        </div>
+                        <div class="version-row">
+                            <div class="vh-stat"><span class="k">Installed</span><span class="v mono" id="currentVersionText">—</span></div>
+                            <div class="vh-stat"><span class="k">Latest</span><span class="v mono" id="remoteVersionText">—</span></div>
+                        </div>
+                        <div class="subhead">What's changed</div>
+                        <ul id="changelogPreviewList" class="note-list"></ul>
+                    </div>
 
-        <nav class="bottom-nav" aria-label="Mobile navigation">
-            <button type="button" data-tab-trigger="home" class="is-active" aria-selected="true"><span>🏠</span>Overview</button>
-            <button type="button" data-tab-trigger="add" aria-selected="false"><span>➕</span>Add</button>
-            <button type="button" data-tab-trigger="import" aria-selected="false"><span>🤖</span>Import</button>
-            <button type="button" data-tab-trigger="plan" aria-selected="false"><span>🧭</span>Plan</button>
-            <button type="button" data-tab-trigger="activity" aria-selected="false"><span>📋</span>Activity</button>
-            <button type="button" data-tab-trigger="reports" aria-selected="false"><span>📊</span>Reports</button>
-            <button type="button" data-tab-trigger="security" aria-selected="false"><span>🔐</span>Security</button>
-        </nav>
+                </section>
+
+            </div><!-- /.app-content -->
+        </div><!-- /.app-main -->
+    </div><!-- /#appContent -->
+
+    <!-- ===================== Bottom nav (mobile) ===================== -->
+    <nav class="bottom-nav" aria-label="Primary">
+        <button type="button" class="is-active" data-tab-trigger="home" aria-label="Overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/></svg><span>Home</span></button>
+        <button type="button" data-tab-trigger="add" aria-label="Add money"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg><span>Add</span></button>
+        <button type="button" data-tab-trigger="plan" aria-label="Plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span>Plan</span></button>
+        <button type="button" data-tab-trigger="activity" aria-label="Activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="3.5" cy="6" r="1.3"/><circle cx="3.5" cy="12" r="1.3"/><circle cx="3.5" cy="18" r="1.3"/></svg><span>Activity</span></button>
+        <button type="button" data-tab-trigger="reports" aria-label="Reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Reports</span></button>
+    </nav>
+
+    <!-- ===================== Banners ===================== -->
+    <div id="installBanner" class="install-banner hidden">
+        <div class="banner-copy">
+            <b>Install BudgetVault</b>
+            <span id="installHelp">Add it to your home screen for offline, app-like access.</span>
+        </div>
+        <div class="banner-actions">
+            <button id="installAppBtn" type="button">Install</button>
+            <button id="dismissInstallBtn" class="ghost" type="button">Not now</button>
+        </div>
     </div>
 
+    <div id="updateBanner" class="update-banner hidden">
+        <div class="banner-copy">
+            <b>Update available</b>
+            <span id="updateBannerText">A new version has been published.</span>
+        </div>
+        <div class="banner-actions">
+            <button id="applyUpdateBtn" type="button">Refresh</button>
+            <button id="dismissUpdateBtn" class="ghost" type="button">Later</button>
+        </div>
+    </div>
 
+    <!-- ===================== Edit transaction modal ===================== -->
     <div id="editModal" class="modal-overlay hidden">
-        <div class="modal auth-card edit-modal-card">
-            <span class="eyebrow">✏️ Transaction editor</span>
-            <h2 id="editModalTitle">Edit transaction</h2>
-            <form id="editTransactionForm" class="form-stack">
+        <div class="modal">
+            <div class="modal-head">
+                <h2 id="editModalTitle">Edit</h2>
+                <button id="cancelEditBtn" class="icon-btn ghost" type="button" aria-label="Close">✕</button>
+            </div>
+            <form id="editTransactionForm" autocomplete="off">
                 <input type="hidden" id="editType">
                 <input type="hidden" id="editIndex">
-                <div class="input-group"><label for="editDate">Date</label><input type="date" id="editDate" required></div>
-                <div class="input-group"><label for="editAmount">Amount</label><input type="number" id="editAmount" min="0.01" step="0.01" inputmode="decimal" required></div>
-                <div class="input-group" id="editSourceWrap"><label for="editSource">Source</label><input type="text" id="editSource"></div>
-                <div class="input-group" id="editCategoryWrap"><label for="editCategory">Category</label><select id="editCategory"></select></div>
-                <div class="input-group" id="editDescriptionWrap"><label for="editDescription">Description</label><input type="text" id="editDescription"></div>
-                <div class="input-group"><label for="editRecurrence">Repeat</label><select id="editRecurrence"><option value="none">One-off</option><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option><option value="fourweekly">Every 4 weeks</option><option value="monthly">Monthly</option></select></div>
-                <label class="checkbox-row"><input type="checkbox" id="editReviewed"> Mark as reviewed</label>
-                <div class="pin-actions">
+                <div class="form-row two">
+                    <label>Date<input type="date" id="editDate" required></label>
+                    <label>Amount (£)<input type="number" id="editAmount" inputmode="decimal" step="0.01" min="0" required></label>
+                </div>
+                <div id="editSourceWrap">
+                    <label>Source<input type="text" id="editSource" placeholder="Income source"></label>
+                </div>
+                <div id="editCategoryWrap">
+                    <label>Category<select id="editCategory"></select></label>
+                </div>
+                <div id="editDescriptionWrap">
+                    <label>Description<input type="text" id="editDescription" placeholder="Description"></label>
+                </div>
+                <div class="form-row two">
+                    <label>Repeats
+                        <select id="editRecurrence">
+                            <option value="none">One-off</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Bi-weekly</option>
+                            <option value="fourweekly">Every 4 weeks</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </label>
+                    <label class="check-row tall"><input type="checkbox" id="editReviewed"><span><b>Reviewed</b></span></label>
+                </div>
+                <div class="modal-actions">
+                    <button id="splitExpenseBtn" class="ghost" type="button">Split expense</button>
                     <button id="saveEditBtn" type="submit">Save changes</button>
-                    <button id="splitExpenseBtn" type="button" class="secondary">Split expense</button>
-                    <button id="cancelEditBtn" type="button" class="ghost">Cancel</button>
                 </div>
             </form>
         </div>
     </div>
 
+    <!-- ===================== Split expense modal ===================== -->
     <div id="splitModal" class="modal-overlay hidden">
-        <div class="modal auth-card edit-modal-card">
-            <span class="eyebrow">🧩 Split expense</span>
-            <h2>Split one expense into 2 parts</h2>
-            <p class="security-inline-note">Useful when one purchase spans two categories.</p>
-            <form id="splitExpenseForm" class="form-stack">
-                <div class="input-group"><label for="splitAmountOne">Part 1 amount</label><input type="number" id="splitAmountOne" min="0.01" step="0.01" inputmode="decimal" required></div>
-                <div class="input-group"><label for="splitCategoryOne">Part 1 category</label><select id="splitCategoryOne"></select></div>
-                <div class="input-group"><label for="splitDescOne">Part 1 description</label><input type="text" id="splitDescOne"></div>
-                <div class="input-group"><label for="splitAmountTwo">Part 2 amount</label><input type="number" id="splitAmountTwo" min="0.01" step="0.01" inputmode="decimal" required></div>
-                <div class="input-group"><label for="splitCategoryTwo">Part 2 category</label><select id="splitCategoryTwo"></select></div>
-                <div class="input-group"><label for="splitDescTwo">Part 2 description</label><input type="text" id="splitDescTwo"></div>
-                <div class="pin-actions">
+        <div class="modal">
+            <div class="modal-head">
+                <h2>Split expense</h2>
+                <button id="cancelSplitBtn" class="icon-btn ghost" type="button" aria-label="Close">✕</button>
+            </div>
+            <p class="sub">Divide this expense into two — useful when one payment covers two categories.</p>
+            <form id="splitExpenseForm" autocomplete="off">
+                <div class="split-part">
+                    <span class="part-label">Part one</span>
+                    <div class="form-row two">
+                        <label>Amount (£)<input type="number" id="splitAmountOne" inputmode="decimal" step="0.01" min="0" required></label>
+                        <label>Category<select id="splitCategoryOne"></select></label>
+                    </div>
+                    <label>Description<input type="text" id="splitDescOne" placeholder="Description"></label>
+                </div>
+                <div class="split-part">
+                    <span class="part-label">Part two</span>
+                    <div class="form-row two">
+                        <label>Amount (£)<input type="number" id="splitAmountTwo" inputmode="decimal" step="0.01" min="0" required></label>
+                        <label>Category<select id="splitCategoryTwo"></select></label>
+                    </div>
+                    <label>Description<input type="text" id="splitDescTwo" placeholder="Description"></label>
+                </div>
+                <div class="modal-actions">
                     <button type="submit">Save split</button>
-                    <button id="cancelSplitBtn" type="button" class="ghost">Cancel</button>
                 </div>
             </form>
         </div>
     </div>
 
+    <!-- ===================== Onboarding / setup modal ===================== -->
     <div id="onboardingModal" class="modal-overlay hidden">
-        <div class="modal auth-card edit-modal-card">
-            <span class="eyebrow">✨ Setup guide</span>
-            <h2>Make this budget feel right</h2>
-            <p class="security-inline-note">Choose a cycle, starter style, and goals. You can reopen this guide later.</p>
-            <form id="onboardingForm" class="form-stack">
-                <div class="input-group"><label for="onboardingBudgetName">Budget name</label><input type="text" id="onboardingBudgetName" placeholder="Main budget"></div>
-                <div class="input-group"><label for="onboardingCycle">Budget cycle</label><select id="onboardingCycle"><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option><option value="fourweekly">Every 4 weeks</option><option value="monthly">Monthly</option></select></div>
-                <div class="input-group"><label for="onboardingStyle">Starter category pack</label><select id="onboardingStyle"><option value="balanced">Balanced everyday budget</option><option value="family">Family / home heavy</option><option value="essentials">Essentials first</option><option value="flexible">Flexible / simple</option></select></div>
-                <div class="input-group"><label for="onboardingLimit">Spending limit</label><input type="number" id="onboardingLimit" min="0" step="0.01" inputmode="decimal"></div>
-                <div class="input-group"><label for="onboardingSavings">Savings target</label><input type="number" id="onboardingSavings" min="0" step="0.01" inputmode="decimal"></div>
-                <label class="checkbox-row"><input type="checkbox" id="onboardingRollover"> Turn on category rollover</label>
-                <div class="pin-actions">
+        <div class="modal">
+            <div class="modal-head">
+                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z"/></svg> Quick setup</span>
+                <button id="skipOnboardingBtn" class="icon-btn ghost" type="button" aria-label="Skip">✕</button>
+            </div>
+            <h2>Set up this budget</h2>
+            <form id="onboardingForm" autocomplete="off">
+                <label>Budget name<input type="text" id="onboardingBudgetName" placeholder="e.g. Main" maxlength="40"></label>
+                <div class="form-row two">
+                    <label>Pay cycle
+                        <select id="onboardingCycle">
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Bi-weekly</option>
+                            <option value="fourweekly">Every 4 weeks</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </label>
+                    <label>Category style
+                        <select id="onboardingStyle">
+                            <option value="balanced">Balanced</option>
+                            <option value="family">Family</option>
+                            <option value="essentials">Essentials only</option>
+                            <option value="flexible">Flexible</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="form-row two">
+                    <label>Spending cap (£)<input type="number" id="onboardingLimit" inputmode="decimal" step="0.01" min="0" placeholder="0.00"></label>
+                    <label>Savings target (£)<input type="number" id="onboardingSavings" inputmode="decimal" step="0.01" min="0" placeholder="0.00"></label>
+                </div>
+                <label>Already saved (£)<input type="number" id="onboardingSavingsBalance" inputmode="decimal" step="0.01" min="0" placeholder="0.00"></label>
+                <label class="check-row"><input type="checkbox" id="onboardingRollover"><span><b>Roll unspent category money into the next cycle</b></span></label>
+                <div class="modal-actions">
                     <button type="submit">Save setup</button>
-                    <button id="skipOnboardingBtn" type="button" class="ghost">Skip for now</button>
                 </div>
             </form>
         </div>
     </div>
 
+    <!-- ===================== Guide modal ===================== -->
     <div id="guideModal" class="modal-overlay hidden">
-        <div class="modal auth-card guide-modal-card">
-            <span class="eyebrow">📘 How to use</span>
-            <h2>Use BudgetVault like a pro</h2>
-            <div class="guide-modal-grid">
-                <div>
-                    <h3>Quick start</h3>
-                    <ul class="guide-bullets">
-                        <li>Create or rename your budget.</li>
-                        <li>Choose the budget cycle that matches how you think about money.</li>
-                        <li>Add your regular income first, then your fixed bills, then flexible spending.</li>
-                        <li>Set category limits if you want tighter control.</li>
-                    </ul>
-                </div>
-                <div>
-                    <h3>Useful habits</h3>
-                    <ul class="guide-bullets">
-                        <li>Review uncategorised or unreviewed transactions at the end of each cycle.</li>
-                        <li>Use split expense when one purchase belongs to two categories.</li>
-                        <li>Use reports to compare this cycle with the last one before making changes.</li>
-                        <li>Export an encrypted backup before testing imports or clearing data.</li>
-                        <li>Use AI Import only after reading the privacy notice, then review every parsed transaction before importing.</li>
-                    </ul>
-                </div>
-                <div>
-                    <h3>What the terms mean</h3>
-                    <ul class="guide-bullets">
-                        <li><strong>Spending limit</strong>: your target cap for total spending in the cycle.</li>
-                        <li><strong>Savings target</strong>: what you want left over or moved aside.</li>
-                        <li><strong>Rollover</strong>: unused category budget can carry forward; overspend can reduce the next cycle.</li>
-                        <li><strong>PIN lock</strong>: protects an already-open screen after inactivity, not the saved encrypted data.</li>
-                    </ul>
-                </div>
+        <div class="modal guide-modal">
+            <div class="modal-head">
+                <h2>How BudgetVault works</h2>
+                <button id="closeGuideBtn" class="icon-btn ghost" type="button" aria-label="Close">✕</button>
             </div>
-            <div class="pin-actions">
-                <button id="openOnboardingFromGuideBtn" type="button">Open setup guide</button>
-                <button id="closeGuideBtn" type="button" class="ghost">Close</button>
+            <div class="guide-grid">
+                <div class="guide-card"><h4>1 · Set your cycle</h4><p>Pick how often you're paid in <b>Plan</b>. Every "this cycle" figure follows it.</p></div>
+                <div class="guide-card"><h4>2 · Add money in &amp; out</h4><p>Log income and expenses in <b>Add</b>. Mark repeats so reminders appear.</p></div>
+                <div class="guide-card"><h4>3 · Cap &amp; save</h4><p>Set a spending cap and savings target. Use the <b>Savings</b> category to move money to savings without it hitting your cap.</p></div>
+                <div class="guide-card"><h4>4 · Give pots limits</h4><p>Add per-category limits and turn on rollover to carry leftovers forward.</p></div>
+                <div class="guide-card"><h4>5 · Review &amp; report</h4><p>Tidy items in <b>Activity</b>; see trends in <b>Reports</b>. Everything stays on-device.</p></div>
+                <div class="guide-card"><h4>6 · Back up</h4><p>Download an encrypted backup from <b>Security</b>. Lost password means lost data — there's no recovery.</p></div>
+            </div>
+            <div class="modal-actions">
+                <button id="openOnboardingFromGuideBtn" class="secondary" type="button">Run setup wizard</button>
             </div>
         </div>
     </div>
 
+    <!-- ===================== What's new modal ===================== -->
     <div id="whatsNewModal" class="modal-overlay hidden">
-        <div class="modal auth-card guide-modal-card">
-            <span class="eyebrow">✨ What's new</span>
-            <h2 id="whatsNewTitle">Latest changes</h2>
-            <p id="whatsNewIntro" class="security-inline-note">You can reopen this from the top of the app any time.</p>
-            <ul id="whatsNewList" class="guide-bullets"></ul>
-            <div class="pin-actions">
-                <button id="goToGuideFromWhatsNewBtn" type="button">How to use</button>
-                <button id="closeWhatsNewBtn" type="button" class="ghost">Close</button>
+        <div class="modal">
+            <div class="modal-head">
+                <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z"/></svg> Release notes</span>
+                <button id="closeWhatsNewBtn" class="icon-btn ghost" type="button" aria-label="Close">✕</button>
+            </div>
+            <h2 id="whatsNewTitle">What's new</h2>
+            <p id="whatsNewIntro" class="sub"></p>
+            <ul id="whatsNewList" class="note-list"></ul>
+            <div class="modal-actions">
+                <button id="goToGuideFromWhatsNewBtn" class="secondary" type="button">Open the guide</button>
             </div>
         </div>
     </div>
 
-
-        <script defer src="app.js"></script>
+    <script defer src="app.js"></script>
 </body>
 </html>
