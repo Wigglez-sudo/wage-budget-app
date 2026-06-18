@@ -1,11 +1,12 @@
 {
-  "version": "2.1.2",
-  "publishedAt": "2026-06-17",
+  "version": "2.1.3",
+  "publishedAt": "2026-06-18",
   "notes": [
-    "Fixed the new Settings tab opening the Home page instead of Settings.",
-    "Fixed the top bar overlapping the iPhone Dynamic Island and notch, so headings are no longer cut off.",
-    "Fixed the Install card at the bottom being hidden behind the navigation bar — its buttons are now reachable.",
-    "Fixed the lock icon: it now opens the Security tab's screen-lock card so you can set a PIN.",
-    "Added a Settings tab with a Reset BudgetVault option, locked behind a tick box and typing RESET so it can't happen by accident."
+    "Security hardening for the optional AI-import and key-server endpoints.",
+    "Added rate limiting to the key server and the statement-import endpoint, so they can't be hammered — this is what makes online high-security mode's protection real.",
+    "Import endpoints now reject requests with no website origin when an allowed website is configured, closing a curl bypass.",
+    "Shared-secret checks are now constant-time, and uploads are verified to actually be PDFs.",
+    "Stronger spreadsheet-injection protection on CSV export.",
+    "No changes to encryption, your password, or your data — everything stays on your device as before."
   ]
 }

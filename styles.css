@@ -263,7 +263,7 @@ label { color: var(--text-dim); font-weight: 600; font-size: 0.86rem; }
 .topbar-brand { display: flex; align-items: center; gap: 0.55rem; margin-right: auto; }
 .topbar-brand img { width: 30px; height: 30px; }
 .topbar-brand b { font-weight: 750; letter-spacing: -0.02em; font-size: 1.02rem; }
-.topbar-actions { display: flex; align-items: center; gap: 0.4rem; }
+.topbar-actions { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
 .icon-btn {
     width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: var(--radius-md);
     background: var(--surface-2); color: var(--text-dim);
@@ -738,7 +738,7 @@ canvas { max-width: 100%; }
 
 @media (min-width: 1024px) {
     .side-nav { display: flex; }
-    .app-main { margin-left: var(--sidebar-w); }
+    .app-main { margin-left: var(--sidebar-w); width: calc(100% - var(--sidebar-w)); }
     .topbar-brand, .topbar .icon-btn[data-tab-trigger] { display: none; }
     .app-content { padding: 1.1rem 1.6rem 2.5rem; }
     .topbar { background: transparent; padding-top: calc(1rem + env(safe-area-inset-top)); }

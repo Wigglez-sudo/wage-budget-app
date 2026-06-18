@@ -13,14 +13,14 @@
         const RECURRENCE_LABELS = { none: 'One-off', ...PERIOD_LABELS };
         const VALID_PERIODS = new Set(Object.keys(PERIOD_LABELS));
         const VALID_RECURRENCES = new Set(['none', ...Object.keys(PERIOD_LABELS)]);
-        const CURRENT_APP_VERSION = '2.1.2';
+        const CURRENT_APP_VERSION = '2.1.3';
         const TAB_KEYS = ['home', 'add', 'import', 'plan', 'activity', 'reports', 'security', 'settings'];
-        const DEFAULT_APP_META = { version: CURRENT_APP_VERSION, publishedAt: '2026-06-17', notes: [
-            'Security hardening release. Your data, budgets and existing password all keep working.',
-            'Stronger password rules: guessable passwords like a word plus a year are now blocked. A 4-word passphrase is the easiest way to pass.',
-            'Encryption strengthened to 1,000,000 PBKDF2 iterations. Existing vaults still open and upgrade automatically the next time they are saved.',
-            'The optional AI-import server now enforces your allowed website and an optional secret key, so it cannot be used by others.',
-            'Full details of the security testing and fixes are in SECURITY.md.'
+        const DEFAULT_APP_META = { version: CURRENT_APP_VERSION, publishedAt: '2026-06-18', notes: [
+            'Security hardening for the optional online endpoints. Your data, budgets and password all keep working — encryption is unchanged.',
+            'Rate limiting added to the key server and the AI-import endpoint, so they can\'t be hammered. This is what makes online high-security mode\'s "every guess must come through your server" protection real.',
+            'The import endpoints now reject requests with no website origin when an allowed website is set, closing a curl bypass; shared-secret checks are constant-time; uploads are verified to be real PDFs.',
+            'Stronger spreadsheet-injection protection on CSV export.',
+            'Full details of the security testing and fixes are in SECURITY.md and SECURITY-REVIEW-v2.1.3.md.'
         ] };
 
 
@@ -2364,7 +2364,10 @@ function renderYearlyReport() {
 
         function csvCell(value) {
             let text = String(value ?? '');
-            if (/^[=+\-@]/.test(text)) text = `'${text}`;
+            // Neutralise spreadsheet formula injection: catch formula triggers even when
+            // preceded by whitespace or a leading tab/carriage-return (all are stripped by
+            // spreadsheet apps before evaluating the cell).
+            if (/^[\s]*[=+\-@\t\r]/.test(text)) text = `'${text}`;
             return `"${text.replace(/"/g, '""')}"`;
         }
 

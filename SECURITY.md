@@ -242,3 +242,81 @@ dictionary cracker at only the sealed blob. The crypto changes here were validat
 Node test scripts covering: the offline and online round-trips, wrong-password rejection,
 the "online file is not crackable without the server pepper" property, legacy-vault
 decryption, and the automatic 600k → 1,000,000 upgrade (no lockout). All passed.
+
+---
+
+## 10. v2.1.3 — endpoint hardening (independent review round)
+
+v2.1.3 followed an **independent** security review (an outside pass that re-verified the
+claims in this document against the code, then looked for gaps). The encryption,
+password policy, and client-side handling were re-tested and confirmed unchanged and
+sound — the round-trip, wrong-password rejection, ciphertext-tamper rejection, random
+salt, and the "no XSS" property were all reproduced and **passed**. The fixes below
+address weaknesses found in the **server endpoints**, not the crypto.
+
+### Finding 6 — Online mode's "rate-limited" guarantee wasn't implemented (HIGH) — FIXED
+§5 describes online high-security mode's protection as: an attacker with your file must
+brute-force *through* your `/api/pepper` endpoint, "which you can rate-limit." In
+practice **no rate limiting existed in the code**, so an attacker who also knew the
+endpoint could pipeline guesses at the server's full throughput — undermining the
+guarantee.
+**Fix:** added a per-IP sliding-window rate limiter to **`/api/pepper`** (default 30
+req/min) and to **`/api/parse-statement`** (default 12 req/min), both returning `429`
+with `Retry-After` when exceeded and tunable via `PEPPER_RATE_LIMIT` /
+`IMPORT_RATE_LIMIT`. Note: serverless instances don't share memory, so for a hard
+global limit, back this with a shared store (Upstash/Vercel KV); the in-instance limiter
+still raises the bar substantially. Verified the limiter trips at the threshold and is
+per-IP.
+
+### Finding 7 — Origin allow-list was bypassable with no Origin header (MEDIUM) — FIXED
+`originAllowed()` returned `true` when a request had **no** `Origin` header, so with
+`ALLOWED_ORIGIN` set but no shared secret, a plain `curl` (which sends no Origin) passed
+the check and reached OpenAI. Legitimate browser callers always send an Origin on
+cross-origin POSTs, so this was an attacker convenience, not a real one.
+**Fix:** when `ALLOWED_ORIGIN` is configured, requests with no Origin are now **rejected**.
+Behaviour is unchanged when `ALLOWED_ORIGIN` is left unset (`*`). Verified: no-Origin
+curl is blocked, evil origins blocked, the legit origin still passes.
+
+### Finding 8 — Shared-secret comparison wasn't constant-time (LOW) — FIXED
+The `x-budgetvault-key` check used `!==`, a theoretical timing side-channel.
+**Fix:** now compared with `crypto.timingSafeEqual` (length-checked first). Verified
+correct/incorrect/missing-key behaviour is unchanged.
+
+### Finding 9 — PDF upload wasn't validated beyond its claimed MIME type (LOW) — FIXED
+`parse-statement` checked the `mimeType` string but not the bytes.
+**Fix:** the upload's leading bytes must now be the `%PDF-` signature or the request is
+rejected with `400`. Verified real PDFs pass and non-PDF bytes are rejected.
+
+### Finding 10 — CSV formula-injection guard missed some prefixes (LOW) — FIXED
+The guard caught `= + - @` but not a leading tab/carriage-return or a formula after
+leading whitespace.
+**Fix:** the guard now also neutralises `\t`/`\r`-prefixed and whitespace-padded
+formulas. Verified, with normal text and quote-doubling left intact.
+
+### Documented (no code change)
+- The user's **AI-import shared secret** is stored in plaintext `localStorage`. It is
+  not the vault password and only gates the user's own endpoint, but anyone with local
+  device access could read it. This is a conscious convenience trade-off, recorded here
+  for transparency.
+
+All v2.1.3 changes are additive and backwards-compatible: users who configure nothing
+keep prior behaviour, and no cryptographic or data-format change was made. The full
+independent review is in **SECURITY-REVIEW-v2.1.3.md**.
+
+### Finding 11 — Clickjacking protection wasn't active (MEDIUM) — FIXED
+The page's `frame-ancestors 'none'` was set only in the `<meta>` CSP, which browsers
+ignore (it works only as an HTTP header). The app could therefore be framed.
+**Fix:** `frame-ancestors 'none'`, `X-Frame-Options: DENY` and `Referrer-Policy:
+no-referrer` are now sent as HTTP headers for all routes via `vercel.json`.
+
+### Finding 12 — Unlock screen showed the old iteration count (LOW) — FIXED
+The setup/unlock card still read "PBKDF2 600k" after the upgrade to 1,000,000
+iterations (the Security tab already showed the correct figure). Updated so the first
+screen a user sees is accurate.
+
+### UI/accessibility (v2.1.3 review round, non-cryptographic)
+A full UI pass (populated data, all modals, both viewports) fixed: horizontal scroll on
+desktop (`.app-main` width vs sidebar margin) and mobile (`.topbar-actions` overflow);
+added `role="dialog"`/`aria-modal` to all 7 modal overlays; and added accessible labels
+to two form controls. No data, crypto, or endpoint behaviour changed. Details in
+SECURITY-REVIEW-v2.1.3.md (Part 5).

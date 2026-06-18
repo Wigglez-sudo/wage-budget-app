@@ -2,18 +2,52 @@ import crypto from 'node:crypto';
 
 const MAX_BODY_BYTES = 64 * 1024;
 
+// --- Rate limiting (in-instance) ----------------------------------------------
+// The pepper endpoint is the entire basis of "online high-security mode": an
+// attacker who steals the local vault must brute-force THROUGH this endpoint.
+// Without a limiter that promise is empty, so enforce one here. Note: serverless
+// instances don't share memory, so for hard guarantees back this with a shared
+// store (e.g. Upstash/Vercel KV); this in-instance limiter still raises the bar a lot.
+const RL_WINDOW_MS = 60 * 1000;
+const RL_MAX = Number(process.env.PEPPER_RATE_LIMIT || 30); // requests per IP per window
+const rlHits = new Map(); // ip -> [timestamps]
+function clientIp(req) {
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xff || req.socket?.remoteAddress || 'unknown';
+}
+function rateLimited(req) {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const arr = (rlHits.get(ip) || []).filter(t => now - t < RL_WINDOW_MS);
+  arr.push(now);
+  rlHits.set(ip, arr);
+  // opportunistic cleanup so the map can't grow unbounded
+  if (rlHits.size > 5000) { for (const [k, v] of rlHits) { if (!v.some(t => now - t < RL_WINDOW_MS)) rlHits.delete(k); } }
+  return arr.length > RL_MAX;
+}
+
+// Constant-time compare that won't throw on length mismatch.
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a || ''), 'utf8');
+  const bb = Buffer.from(String(b || ''), 'utf8');
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
 function originAllowed(req) {
   const allowed = process.env.ALLOWED_ORIGIN || '*';
   if (allowed === '*') return true;
   const list = allowed.split(',').map(s => s.trim()).filter(Boolean);
   const origin = req.headers.origin || '';
-  if (!origin) return true;
+  // With an allow-list configured, reject requests with no Origin header — a
+  // legitimate browser always sends one, and allowing empty Origin lets curl bypass.
+  if (!origin) return false;
   return list.includes(origin);
 }
 
 function accessDenied(req) {
   const secret = process.env.IMPORT_SHARED_SECRET;
-  if (secret && req.headers['x-budgetvault-key'] !== secret) return 'invalid or missing key';
+  if (secret && !safeEqual(req.headers['x-budgetvault-key'], secret)) return 'invalid or missing key';
   if (!originAllowed(req)) return 'origin not allowed';
   return null;
 }
@@ -54,6 +88,7 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
+  if (rateLimited(req)) { res.setHeader('Retry-After', '60'); return res.status(429).json({ error: 'Too many requests. Slow down and try again shortly.' }); }
   const denied = accessDenied(req);
   if (denied) return res.status(403).json({ error: `Forbidden: ${denied}` });
   const pepper = process.env.KDF_PEPPER;

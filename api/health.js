@@ -1,15 +1,24 @@
+import crypto from 'node:crypto';
+
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a || ''), 'utf8');
+  const bb = Buffer.from(String(b || ''), 'utf8');
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
 function originAllowed(req) {
   const allowed = process.env.ALLOWED_ORIGIN || '*';
   if (allowed === '*') return true;
   const list = allowed.split(',').map(s => s.trim()).filter(Boolean);
   const origin = req.headers.origin || '';
-  if (!origin) return true;
+  if (!origin) return false;
   return list.includes(origin);
 }
 
 function accessDenied(req) {
   const secret = process.env.IMPORT_SHARED_SECRET;
-  if (secret && req.headers['x-budgetvault-key'] !== secret) return 'invalid or missing key';
+  if (secret && !safeEqual(req.headers['x-budgetvault-key'], secret)) return 'invalid or missing key';
   if (!originAllowed(req)) return 'origin not allowed';
   return null;
 }

@@ -22,7 +22,7 @@
 <body class="dark">
 
     <!-- ============ Unlock / setup overlay ============ -->
-    <div id="encryptOverlay" class="modal-overlay hidden">
+    <div id="encryptOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
         <div class="modal auth-card">
             <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Private by design</span>
             <h2 id="encryptTitle">Secure your data</h2>
@@ -37,13 +37,13 @@
             <button id="encryptSubmit"></button>
             <p class="security-note">
                 Lost password means lost data — there is no recovery.<br>
-                <span class="mono" title="AES-256-GCM, PBKDF2 600,000 iterations">AES-256-GCM · PBKDF2 600k</span>
+                <span class="mono" title="AES-256-GCM, PBKDF2 1,000,000 iterations">AES-256-GCM · PBKDF2 1,000,000</span>
             </p>
         </div>
     </div>
 
     <!-- ============ Screen-lock (PIN) overlay ============ -->
-    <div id="pinOverlay" class="modal-overlay hidden">
+    <div id="pinOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
         <div class="modal auth-card">
             <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg> Screen lock</span>
             <h2>Enter your PIN</h2>
@@ -382,7 +382,7 @@
                             </div>
                             <div class="tool-group">
                                 <span class="tool-label">Set type</span>
-                                <select id="bulkImportTypeSelect" class="btn-sm-select">
+                                <select id="bulkImportTypeSelect" class="btn-sm-select" aria-label="Bulk import type">
                                     <option value="expense">Money out</option>
                                     <option value="income">Money in</option>
                                 </select>
@@ -812,7 +812,7 @@
                         <div class="subhead">Restore &amp; exports</div>
                         <div class="data-actions">
                             <button id="importJSON" class="secondary" type="button">Restore from backup</button>
-                            <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+                            <input type="file" id="importFile" accept="application/json,.json" class="hidden" aria-label="Choose a backup file to import">
                             <button id="exportJSON" class="secondary" type="button">Export JSON (plain)</button>
                             <button id="exportCSV" class="secondary" type="button">Export CSV</button>
                             <button id="clearDataBtn" class="danger" type="button">Erase all data</button>
@@ -919,7 +919,7 @@
     </div>
 
     <!-- ===================== Edit transaction modal ===================== -->
-    <div id="editModal" class="modal-overlay hidden">
+    <div id="editModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
         <div class="modal">
             <div class="modal-head">
                 <h2 id="editModalTitle">Edit</h2>
@@ -962,7 +962,7 @@
     </div>
 
     <!-- ===================== Split expense modal ===================== -->
-    <div id="splitModal" class="modal-overlay hidden">
+    <div id="splitModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
         <div class="modal">
             <div class="modal-head">
                 <h2>Split expense</h2>
@@ -994,7 +994,7 @@
     </div>
 
     <!-- ===================== Onboarding / setup modal ===================== -->
-    <div id="onboardingModal" class="modal-overlay hidden">
+    <div id="onboardingModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
         <div class="modal">
             <div class="modal-head">
                 <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z"/></svg> Quick setup</span>
@@ -1035,7 +1035,7 @@
     </div>
 
     <!-- ===================== Guide modal ===================== -->
-    <div id="guideModal" class="modal-overlay hidden">
+    <div id="guideModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
         <div class="modal guide-modal">
             <div class="modal-head">
                 <h2>How BudgetVault works</h2>
@@ -1056,7 +1056,7 @@
     </div>
 
     <!-- ===================== What's new modal ===================== -->
-    <div id="whatsNewModal" class="modal-overlay hidden">
+    <div id="whatsNewModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
         <div class="modal">
             <div class="modal-head">
                 <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z"/></svg> Release notes</span>

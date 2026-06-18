@@ -1,13 +1,42 @@
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 
+import crypto from 'node:crypto';
+
+// --- Rate limiting (in-instance; back with a shared store for hard guarantees) ---
+const RL_WINDOW_MS = 60 * 1000;
+const RL_MAX = Number(process.env.IMPORT_RATE_LIMIT || 12); // PDF imports per IP per window
+const rlHits = new Map();
+function clientIp(req) {
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xff || req.socket?.remoteAddress || 'unknown';
+}
+function rateLimited(req) {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const arr = (rlHits.get(ip) || []).filter(t => now - t < RL_WINDOW_MS);
+  arr.push(now);
+  rlHits.set(ip, arr);
+  if (rlHits.size > 5000) { for (const [k, v] of rlHits) { if (!v.some(t => now - t < RL_WINDOW_MS)) rlHits.delete(k); } }
+  return arr.length > RL_MAX;
+}
+
+// Constant-time compare that won't throw on length mismatch.
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a || ''), 'utf8');
+  const bb = Buffer.from(String(b || ''), 'utf8');
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
 function originAllowed(req) {
   const allowed = process.env.ALLOWED_ORIGIN || '*';
   if (allowed === '*') return true;
   const list = allowed.split(',').map(s => s.trim()).filter(Boolean);
   const origin = req.headers.origin || '';
-  // Requests with no Origin header (server-to-server / curl) can't be origin-checked.
-  // For those, the optional shared secret is the only gate (see accessDenied).
-  if (!origin) return true;
+  // When an allow-list is configured, a request with NO Origin header is rejected.
+  // Legitimate browser callers always send Origin on cross-origin POSTs; allowing
+  // empty-Origin requests would let a plain curl bypass the origin check entirely.
+  if (!origin) return false;
   return list.includes(origin);
 }
 
@@ -27,7 +56,7 @@ function setCors(req, res) {
 // curl) that does not present the matching x-budgetvault-key header.
 function accessDenied(req) {
   const secret = process.env.IMPORT_SHARED_SECRET;
-  if (secret && req.headers['x-budgetvault-key'] !== secret) return 'invalid or missing key';
+  if (secret && !safeEqual(req.headers['x-budgetvault-key'], secret)) return 'invalid or missing key';
   if (!originAllowed(req)) return 'origin not allowed';
   return null;
 }
@@ -109,6 +138,7 @@ export default async function handler(req, res) {
   setCors(req, res);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
+  if (rateLimited(req)) { res.setHeader('Retry-After', '60'); return res.status(429).json({ error: 'Too many import requests. Please wait a minute and try again.' }); }
   const denied = accessDenied(req);
   if (denied) return res.status(403).json({ error: `Forbidden: ${denied}` });
   if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OPENAI_API_KEY is not configured in Vercel.' });
@@ -119,6 +149,10 @@ export default async function handler(req, res) {
     const mimeType = String(body.mimeType || 'application/pdf');
     const dataBase64 = String(body.dataBase64 || '');
     if (!dataBase64 || !/^application\/pdf$/.test(mimeType)) return res.status(400).json({ error: 'Upload a PDF statement.' });
+    // Verify the bytes really are a PDF (%PDF-), not just a claimed MIME type.
+    let pdfHeaderOk = false;
+    try { pdfHeaderOk = Buffer.from(dataBase64.slice(0, 16), 'base64').slice(0, 5).toString('latin1') === '%PDF-'; } catch { pdfHeaderOk = false; }
+    if (!pdfHeaderOk) return res.status(400).json({ error: 'That file does not look like a PDF.' });
     const categories = Array.isArray(body.categories) ? body.categories.map(String).slice(0, 80) : [];
     const learningRules = Array.isArray(body.learningRules) ? body.learningRules.slice(0, 150) : [];
     const existingHints = Array.isArray(body.existingHints) ? body.existingHints.slice(0, 80) : [];
